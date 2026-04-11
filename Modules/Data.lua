@@ -68,6 +68,42 @@ local function CountTimedRunsInRange(sortedDungeons, minimumLevel, maximumLevel)
     return count
 end
 
+local function ResolveSharedSpecInfo(data, specID)
+    if type(specID) ~= "number" or specID <= 0 then
+        return nil, nil
+    end
+
+    local cached = data.specCatalog[specID]
+    if cached then
+        return cached.specName, cached.specIcon
+    end
+
+    if type(GetSpecializationInfoByID) == "function" then
+        local _, specName, _, specIcon = GetSpecializationInfoByID(specID)
+        if specName then
+            return specName, specIcon
+        end
+    end
+
+    return nil, nil
+end
+
+local function HasSharedMythicData(snapshot)
+    if type(snapshot) ~= "table" then
+        return false
+    end
+
+    return (snapshot.currentScore or 0) > 0
+        or (snapshot.mainCurrentScore or 0) > 0
+        or (snapshot.maxDungeonLevel or 0) > 0
+        or (snapshot.timed20 or 0) > 0
+        or (snapshot.timed15 or 0) > 0
+        or (snapshot.timed11_14 or 0) > 0
+        or (snapshot.timed9_10 or 0) > 0
+        or (snapshot.timed4_8 or 0) > 0
+        or (snapshot.timed2_3 or 0) > 0
+end
+
 function Data:CreateBlankRecord(name, realm)
     local fullName = ns:ComposeFullName(name, realm)
     return {
@@ -99,8 +135,11 @@ function Data:CreateBlankRecord(name, realm)
         itemLevelSource = "unknown",
         itemLevelObservedAt = nil,
         itemLevelIsStale = false,
+        scoreSource = "local",
+        scoreObservedAt = nil,
         roleBucket = "unknown",
         roleSource = "unknown",
+        roleObservedAt = nil,
         specID = nil,
         specName = nil,
         specIcon = nil,
@@ -114,7 +153,9 @@ function Data:CreateBlankRecord(name, realm)
         isQualifiedForCurrentKey = false,
         currentKeyStatus = nil,
         currentKeyLevel = nil,
-        currentKeyChests = nil
+        currentKeyChests = nil,
+        reportedKey = nil,
+        activeRun = nil
     }
 end
 
@@ -333,9 +374,12 @@ function Data:ApplyEnrichment(record)
     record.itemLevelSource = "unknown"
     record.itemLevelObservedAt = nil
     record.itemLevelIsStale = false
+    record.scoreSource = "local"
+    record.scoreObservedAt = nil
     record.specSource = "unknown"
     record.specObservedAt = nil
     record.specIsStale = false
+    record.roleObservedAt = nil
     if record.roleSource ~= "raiderio" then
         record.roleSource = "unknown"
     end
@@ -361,6 +405,115 @@ function Data:ApplyEnrichment(record)
 
     if not record.roleBucket then
         record.roleBucket = "unknown"
+    end
+end
+
+function Data:ApplyCommOverlay(record)
+    record.activeRun = nil
+
+    local comm = ns.Comm
+    if not comm or not comm.IsEnabled or not comm:IsEnabled() then
+        return
+    end
+
+    local snapshot = comm:GetSnapshot(record.fullName)
+    if snapshot and comm:IsSnapshotPreferred(snapshot, record) and HasSharedMythicData(snapshot) then
+        record.currentScore = snapshot.currentScore or 0
+        record.mainCurrentScore = (snapshot.mainCurrentScore or 0) > 0 and snapshot.mainCurrentScore or nil
+        record.maxDungeonLevel = snapshot.maxDungeonLevel or 0
+        record.timed20 = snapshot.timed20 or 0
+        record.timed15 = snapshot.timed15 or 0
+        record.timed11_14 = snapshot.timed11_14 or 0
+        record.timed9_10 = snapshot.timed9_10 or 0
+        record.timed4_8 = snapshot.timed4_8 or 0
+        record.timed2_3 = snapshot.timed2_3 or 0
+        record.profileState = "ready"
+        record.scoreSource = "shared"
+        record.scoreObservedAt = snapshot.observedAt
+    end
+
+    if snapshot and record.itemLevelSource ~= "self" and record.itemLevelSource ~= "inspect" then
+        if type(snapshot.itemLevel) == "number" and snapshot.itemLevel > 0 then
+            record.equippedItemLevel = snapshot.itemLevel
+            record.itemLevelSource = "shared"
+            record.itemLevelObservedAt = snapshot.observedAt
+            record.itemLevelIsStale = ns:IsDataStale(record.itemLevelObservedAt)
+        end
+    end
+
+    if snapshot and record.specSource ~= "self" and record.specSource ~= "inspect" then
+        if type(snapshot.specID) == "number" and snapshot.specID > 0 then
+            local specName, specIcon = ResolveSharedSpecInfo(self, snapshot.specID)
+            record.specID = snapshot.specID
+            record.specName = specName or record.specName
+            record.specIcon = specIcon or record.specIcon
+            record.specSource = "shared"
+            record.specObservedAt = snapshot.observedAt
+            record.specIsStale = ns:IsDataStale(record.specObservedAt)
+
+            if specName then
+                self.specCatalog[snapshot.specID] = {
+                    specID = snapshot.specID,
+                    specName = specName,
+                    specIcon = specIcon
+                }
+            end
+        end
+    end
+
+    if snapshot
+        and snapshot.roleBucket
+        and snapshot.roleBucket ~= "unknown"
+        and record.roleSource ~= "group" then
+        local sharedObservedAt = snapshot.observedAt or 0
+        local inspectObservedAt = record.roleSource == "inspect" and (record.roleObservedAt or 0) or 0
+        if record.roleSource ~= "inspect" or sharedObservedAt > inspectObservedAt then
+            record.roleBucket = snapshot.roleBucket
+            record.roleSource = "shared"
+            record.roleObservedAt = snapshot.observedAt
+        end
+    end
+
+    record.activeRun = comm:GetActiveRun(record.fullName)
+end
+
+function Data:ApplyAstralKeys(record)
+    record.reportedKey = nil
+    if not ns.AstralKeys then
+        return
+    end
+
+    record.reportedKey = ns.AstralKeys:GetUnitKey(record.fullName)
+end
+
+local function AreReportedKeysEqual(left, right)
+    if not left and not right then
+        return true
+    elseif not left or not right then
+        return false
+    end
+
+    return left.mapID == right.mapID and left.level == right.level
+end
+
+function Data:RefreshAstralKeys(reason)
+    local changed = false
+
+    if ns.AstralKeys and ns.AstralKeys:IsAvailable() then
+        ns.AstralKeys:RefreshIndex()
+    end
+
+    for index = 1, #self.records do
+        local record = self.records[index]
+        local previousKey = record.reportedKey
+        self:ApplyAstralKeys(record)
+        if not AreReportedKeysEqual(previousKey, record.reportedKey) then
+            changed = true
+        end
+    end
+
+    if changed then
+        ns:FireCallback("DATA_UPDATED", reason or "astralkeys")
     end
 end
 
@@ -510,10 +663,16 @@ function Data:Refresh(reason)
     self:CollectBNetFriends()
     self:BuildFlatRecords()
 
+    if ns.AstralKeys then
+        ns.AstralKeys:RefreshIndex()
+    end
+
     for index = 1, #self.records do
         local record = self.records[index]
         self:ApplyRaiderIO(record)
         self:ApplyEnrichment(record)
+        self:ApplyAstralKeys(record)
+        self:ApplyCommOverlay(record)
     end
 
     table.sort(self.records, function(left, right)
@@ -553,12 +712,15 @@ function Data:OnInspectDataReady(fullName, guid, payload)
 
     if payload.roleBucket and record.roleSource ~= "group" then
         record.roleBucket = payload.roleBucket
+        record.roleSource = "inspect"
+        record.roleObservedAt = payload.specObservedAt or payload.observedAt
     end
 
     if guid and not record.guid then
         record.guid = guid
     end
 
+    self:ApplyCommOverlay(record)
     self:UpdateCurrentKeyContext()
     ns:FireCallback("DATA_UPDATED", "inspect")
 end
@@ -664,6 +826,18 @@ end
 
 ns:RegisterCallback("PLAYER_LOGIN", function()
     Data:Refresh("login")
+end)
+
+ns:RegisterEvent("ADDON_LOADED", function(name)
+    if name == "AstralKeys" and ns.db then
+        Data:Refresh("astralkeys_loaded")
+    end
+end)
+
+ns:RegisterEvent("CHAT_MSG_ADDON", function(prefix)
+    if prefix == "AstralKeys" and ns.db then
+        Data:RefreshAstralKeys("astralkeys_sync")
+    end
 end)
 
 ns:RegisterEvent("FRIENDLIST_UPDATE", RefreshRoster)

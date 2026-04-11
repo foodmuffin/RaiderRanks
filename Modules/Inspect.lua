@@ -242,6 +242,8 @@ function Inspect:ApplyCachedData(record)
 
     if cached.roleBucket and record.roleSource ~= "group" then
         record.roleBucket = cached.roleBucket
+        record.roleSource = "inspect"
+        record.roleObservedAt = cached.specObservedAt or cached.observedAt
     end
 end
 

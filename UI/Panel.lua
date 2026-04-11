@@ -28,6 +28,12 @@ local pveAddonNames = {
     "Blizzard_PVEUI"
 }
 
+local nativePVEPanelNames = {
+    "GroupFinderFrame",
+    "PVPUIFrame",
+    "ChallengesFrame"
+}
+
 local expandedPVEFrame = {
     width = 1360,
     height = 840,
@@ -54,6 +60,8 @@ local selfEntryTexture = "Interface\\CharacterFrame\\UI-Player-PlayTimeUnhealthy
 local currentKeyFallbackTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
 local currentKeyCheckTexture = "Interface\\Buttons\\UI-CheckBox-Check"
 local friendSourceTexture = "Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon"
+local activityMarkerAtlas = "common-icon-forwardarrow"
+local warningIconAtlas = "services-icon-warning"
 
 local function CreateDivider(parent, topAnchor, topOffset)
     local divider = parent:CreateTexture(nil, "ARTWORK")
@@ -223,6 +231,42 @@ local function ShouldShowFriendSourceIcon(record)
     return true
 end
 
+local function ShouldShowActivityMarker(record)
+    return record
+        and record.activeRun
+        and ns.Comm
+        and ns.Comm.IsLiveActivityVisible
+        and ns.Comm:IsLiveActivityVisible()
+        or false
+end
+
+local function BuildLiveRunMembersText(activity)
+    if not activity or type(activity.members) ~= "table" or #activity.members == 0 then
+        return ns.L.UNKNOWN
+    end
+
+    local members = {}
+    for index = 1, #activity.members do
+        local name, realm = ns:SplitNameRealm(activity.members[index], ns.playerRealm)
+        members[#members + 1] = ns:GetDisplayName(name, realm)
+    end
+
+    return table.concat(members, ", ")
+end
+
+local function BuildRaiderIODatasetLabel(entry)
+    if not entry then
+        return ns.L.UNKNOWN
+    end
+
+    local label = ("%s %s"):format(entry.region or ns.L.UNKNOWN, entry.dataType or ns.L.UNKNOWN)
+    if entry.timestampText and entry.timestampText ~= "" then
+        label = ("%s (%s)"):format(label, entry.timestampText)
+    end
+
+    return label
+end
+
 local function ApplyScoreColor(fontString, score)
     if not fontString then
         return
@@ -264,6 +308,37 @@ local function ApplyRankPresentation(fontString, rank)
         fontString:SetText(rank)
         fontString:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
     end
+end
+
+local function GetKeystoneLevelColor(level)
+    if level and C_ChallengeMode and C_ChallengeMode.GetKeystoneLevelRarityColor then
+        local color = C_ChallengeMode.GetKeystoneLevelRarityColor(level)
+        if color then
+            return color
+        end
+    end
+
+    return HIGHLIGHT_FONT_COLOR
+end
+
+local function ApplyReportedKeyRibbon(row, reportedKey, isPlayerEntry)
+    if not row or not row.reportedKeyAccent then
+        return
+    end
+
+    row.reportedKeyAccent:Hide()
+    if not reportedKey or not reportedKey.level then
+        return
+    end
+
+    local color = GetKeystoneLevelColor(reportedKey.level)
+    local r, g, b = color:GetRGB()
+    local xOffset = isPlayerEntry and 3 or 0
+    row.reportedKeyAccent:ClearAllPoints()
+    row.reportedKeyAccent:SetPoint("TOPLEFT", xOffset, 0)
+    row.reportedKeyAccent:SetPoint("BOTTOMLEFT", xOffset, 0)
+    row.reportedKeyAccent:SetColorTexture(r, g, b, 0.9)
+    row.reportedKeyAccent:Show()
 end
 
 local function ApplyCurrentKeyStatusIndicator(indicator, status)
@@ -367,6 +442,37 @@ local function ShowCurrentKeyHeaderTooltip(owner)
     GameTooltip:Show()
 end
 
+local function ShowNewerRaiderIOWarningTooltip(owner)
+    if not owner or not ns.Comm or not ns.Comm.IsWarningVisible or not ns.Comm:IsWarningVisible() then
+        return
+    end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:SetText(ns.L.NETWORK_NEWER_RAIDERIO_TITLE)
+    GameTooltip:AddLine(ns.L.NETWORK_NEWER_RAIDERIO_TOOLTIP_TITLE, 1, 1, 1, true)
+
+    local sources = ns.Comm:GetNewerRaiderIOSources()
+    for index = 1, #sources do
+        local source = sources[index]
+        local datasetLabels = {}
+        for entryIndex = 1, #(source.entries or {}) do
+            datasetLabels[#datasetLabels + 1] = BuildRaiderIODatasetLabel(source.entries[entryIndex])
+        end
+
+        local name, realm = ns:SplitNameRealm(source.senderFullName, ns.playerRealm)
+        GameTooltip:AddLine(
+            ns.L.NETWORK_NEWER_RAIDERIO_TOOLTIP_LINE:format(
+                ns:GetDisplayName(name, realm),
+                table.concat(datasetLabels, ", ")
+            ),
+            HIGHLIGHT_FONT_COLOR:GetRGB(),
+            true
+        )
+    end
+
+    GameTooltip:Show()
+end
+
 local function ShowTimedBucketHeaderTooltip(owner, bucketKey)
     if not owner or not bucketKey then
         return
@@ -434,6 +540,19 @@ local function GetPVEContentAnchor()
     end
 
     return _G.PVEFrame
+end
+
+local function HideNativePVEPanels()
+    for index = 1, #nativePVEPanelNames do
+        local panel = _G[nativePVEPanelNames[index]]
+        if panel and panel.Hide then
+            panel:Hide()
+        end
+    end
+
+    if type(PVEFrame_HideLeftInset) == "function" then
+        pcall(PVEFrame_HideLeftInset)
+    end
 end
 
 local function HideTexture(texture)
@@ -735,11 +854,24 @@ function Panel:CreateHeader(frame)
             ns.Settings:Open()
         end
     end)
+
+    frame.networkWarningButton = CreateFrame("Button", nil, frame)
+    frame.networkWarningButton:SetSize(18, 18)
+    frame.networkWarningButton:SetPoint("RIGHT", frame.settingsButton, "LEFT", -8, 0)
+    frame.networkWarningButton.icon = frame.networkWarningButton:CreateTexture(nil, "ARTWORK")
+    frame.networkWarningButton.icon:SetAllPoints()
+    frame.networkWarningButton.icon:SetAtlas(warningIconAtlas, true)
+    frame.networkWarningButton.icon:SetVertexColor(1, 0.82, 0.12, 1)
+    frame.networkWarningButton:SetScript("OnEnter", function(self)
+        ShowNewerRaiderIOWarningTooltip(self)
+    end)
+    frame.networkWarningButton:SetScript("OnLeave", GameTooltip_Hide)
+    frame.networkWarningButton:Hide()
 end
 
 function Panel:ApplyListRowLayout(row)
     local layout = self.listColumnLayout
-    local markerGutterWidth = 26
+    local markerGutterWidth = 40
     if not row or not layout then
         return
     end
@@ -850,6 +982,23 @@ function Panel:InitializeListRow(row)
         if not ns:ShowProfileTooltip(GameTooltip, self.data.name, self.data.realm) then
             GameTooltip:SetText(ns:GetRecordDisplayName(self.data))
         end
+        if ShouldShowActivityMarker(self.data) then
+            local activity = self.data.activeRun
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(
+                ns.L.LIVE_RUN_TOOLTIP_RUNNING:format(("+%d %s"):format(activity.level or 0, activity.mapName or ns.L.UNKNOWN)),
+                0.25,
+                1,
+                0.25,
+                true
+            )
+            GameTooltip:AddLine(
+                ns.L.LIVE_RUN_TOOLTIP_MEMBERS:format(BuildLiveRunMembersText(activity)),
+                HIGHLIGHT_FONT_COLOR:GetRGB(),
+                true
+            )
+            GameTooltip:Show()
+        end
     end)
     row:SetScript("OnLeave", function(self)
         if self.hover then
@@ -890,9 +1039,13 @@ function Panel:InitializeListRow(row)
     row.selfAccent:SetColorTexture(1, 0.82, 0.12, 0.85)
     row.selfAccent:Hide()
 
+    row.reportedKeyAccent = row:CreateTexture(nil, "BORDER")
+    row.reportedKeyAccent:SetWidth(2)
+    row.reportedKeyAccent:Hide()
+
     row.rank = CreateInlineText(row, 24, "LEFT")
     row.markerGutter = CreateFrame("Frame", nil, row)
-    row.markerGutter:SetSize(26, 12)
+    row.markerGutter:SetSize(40, 12)
 
     row.selfMarker = row.markerGutter:CreateTexture(nil, "ARTWORK")
     row.selfMarker:SetSize(12, 12)
@@ -903,6 +1056,12 @@ function Panel:InitializeListRow(row)
     row.friendMarker:SetSize(12, 12)
     row.friendMarker:SetTexture(friendSourceTexture)
     row.friendMarker:Hide()
+
+    row.activityMarker = row.markerGutter:CreateTexture(nil, "ARTWORK")
+    row.activityMarker:SetSize(12, 12)
+    row.activityMarker:SetAtlas(activityMarkerAtlas, true)
+    row.activityMarker:SetVertexColor(0.25, 1, 0.4, 1)
+    row.activityMarker:Hide()
 
     row.name = CreateInlineText(row, 140, "LEFT")
 
@@ -962,8 +1121,10 @@ function Panel:ApplyListRowData(row, data)
     if data.isHeader then
         row.selfGlow:Hide()
         row.selfAccent:Hide()
+        row.reportedKeyAccent:Hide()
         row.selfMarker:Hide()
         row.friendMarker:Hide()
+        row.activityMarker:Hide()
         row.rank:SetText("")
         row.name:SetText(("%s %s"):format(ns:GetRoleMarkup(data.roleBucket), data.label))
         row.name:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
@@ -989,21 +1150,29 @@ function Panel:ApplyListRowData(row, data)
     local stripeIndex = data.displayRank or data.displayIndex or 1
     local isPlayerEntry = data.fullName and ns.playerFullName and data.fullName == ns.playerFullName
     local showFriendMarker = ShouldShowFriendSourceIcon(data)
+    local showActivityMarker = ShouldShowActivityMarker(data)
     row.background:SetColorTexture(0, 0, 0, stripeIndex % 2 == 0 and 0.05 or 0.1)
     row.selfGlow:SetShown(isPlayerEntry)
     row.selfAccent:SetShown(isPlayerEntry)
+    ApplyReportedKeyRibbon(row, data.reportedKey, isPlayerEntry)
     row.selfMarker:SetShown(isPlayerEntry)
     row.friendMarker:SetShown(showFriendMarker)
+    row.activityMarker:SetShown(showActivityMarker)
 
     row.selfMarker:ClearAllPoints()
     row.friendMarker:ClearAllPoints()
-    row.selfMarker:SetPoint("LEFT", row.markerGutter, "LEFT", 0, 0)
+    row.activityMarker:ClearAllPoints()
+    local markerOffset = 0
+    row.selfMarker:SetPoint("LEFT", row.markerGutter, "LEFT", markerOffset, 0)
+    if isPlayerEntry then
+        markerOffset = markerOffset + 14
+    end
     if showFriendMarker then
-        if isPlayerEntry then
-            row.friendMarker:SetPoint("LEFT", row.selfMarker, "RIGHT", 2, 0)
-        else
-            row.friendMarker:SetPoint("LEFT", row.markerGutter, "LEFT", 0, 0)
-        end
+        row.friendMarker:SetPoint("LEFT", row.markerGutter, "LEFT", markerOffset, 0)
+        markerOffset = markerOffset + 14
+    end
+    if showActivityMarker then
+        row.activityMarker:SetPoint("LEFT", row.markerGutter, "LEFT", markerOffset, 0)
     end
 
     ApplyRankPresentation(row.rank, data.roleRank or data.displayRank or 0)
@@ -1369,12 +1538,20 @@ function Panel:ApplyLayout()
     local rightInset = 12
     local headerTop = -34
     local spacing = 12
+    local actionGap = 8
 
     frame.settingsButton:ClearAllPoints()
     frame.settingsButton:SetPoint("TOPRIGHT", -rightInset, headerTop)
 
-    local settingsLeft = width - rightInset - GetControlWidth(frame.settingsButton)
-    local descriptionRightInset = math.max(rightInset + 8, width - settingsLeft + 8)
+    frame.networkWarningButton:ClearAllPoints()
+    frame.networkWarningButton:SetPoint("RIGHT", frame.settingsButton, "LEFT", -actionGap, 0)
+
+    local actionLeft = width
+        - rightInset
+        - GetControlWidth(frame.settingsButton)
+        - actionGap
+        - GetControlWidth(frame.networkWarningButton)
+    local descriptionRightInset = math.max(rightInset + 8, width - actionLeft + 8)
     frame.description:ClearAllPoints()
     frame.description:SetPoint("TOPLEFT", leftInset, -14)
     frame.description:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -descriptionRightInset, -14)
@@ -1387,7 +1564,7 @@ function Panel:ApplyLayout()
         frame,
         { frame.allButton, frame.guildButton, frame.friendsButton, frame.onlineOnly, frame.groupByRole, dropdown },
         leftInset,
-        settingsLeft - 16,
+        actionLeft - 16,
         headerTop,
         8,
         6
@@ -1637,6 +1814,7 @@ function Panel:SelectIntegratedTab()
         return
     end
 
+    HideNativePVEPanels()
     self:ExpandPVEFrame()
     self:UpdatePVEFrameTitle()
     self:UpdatePVEFramePortrait()
@@ -1678,6 +1856,14 @@ function Panel:RefreshHeaderControls()
     frame.onlineOnly:SetChecked(not ns.Config:Get("showOffline"))
     frame.groupByRole:SetChecked(ns.Config:Get("groupByRole"))
     UpdateCurrentKeyHeader(frame.list and frame.list.header and frame.list.header.currentKey)
+
+    if frame.networkWarningButton then
+        local showWarning = ns.Comm
+            and ns.Comm.IsWarningVisible
+            and ns.Comm:IsWarningVisible()
+            and ns.Comm:HasNewerRaiderIOData()
+        frame.networkWarningButton:SetShown(showWarning)
+    end
 
     self:SetClassDropdownText(ns.L.ALL_CLASSES)
     local classFilter = ns.Config:Get("classFilter")

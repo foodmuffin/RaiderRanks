@@ -7,8 +7,7 @@ local alwaysOnKeys = {
     enableGuildInline = true,
     enableFriendsInline = true,
     showItemLevel = true,
-    enableInspectEnrichment = true,
-    showRaidContext = true
+    enableInspectEnrichment = true
 }
 
 local defaults = {
@@ -16,7 +15,9 @@ local defaults = {
     enableFriendsInline = true,
     showItemLevel = true,
     enableInspectEnrichment = true,
-    showRaidContext = true,
+    enableGuildSyncChannel = true,
+    showNewerRaiderIOWarning = true,
+    showLiveKeyActivity = true,
     groupByRole = true,
     classFilter = "all",
     showOffline = true,
@@ -27,6 +28,9 @@ local defaults = {
     inspectCache = {
         byName = {},
         byGUID = {}
+    },
+    commCache = {
+        sharedSnapshots = {}
     },
     migrations = {},
     windowPoint = {

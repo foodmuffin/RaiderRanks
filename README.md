@@ -2,7 +2,7 @@
 
 `Raider Ranks` is a retail WoW addon for **Midnight / 12.0.x** that adds a native-feeling Mythic+ ranking view for your **guild members** and **friends**.
 
-It uses the **RaiderIO addon** as its Mythic+ data source and embeds itself into the **Group Finder / Mythic+ UI**.
+It uses the **RaiderIO addon** as its Mythic+ data source, can optionally read **AstralKeys** for shared keystones, and embeds itself into the **Group Finder / Mythic+ UI**.
 
 ## Why Use Raider Ranks?
 
@@ -20,6 +20,12 @@ It keeps that answer inside WoW, inside the PvE UI, and based on the RaiderIO da
 **RaiderIO is required.**
 
 This addon does not ship its own Mythic+ database. It reads RaiderIO's public addon API and depends on RaiderIO being installed and enabled.
+
+## Optional Dependency
+
+**AstralKeys is optional.**
+
+If installed, Raider Ranks will show AstralKeys detection in Settings and surface a selected player's reported key in the detail pane.
 
 ## What It Does
 
@@ -42,9 +48,9 @@ This addon does not ship its own Mythic+ database. It reads RaiderIO's public ad
 - Shows a detail pane for the selected character with:
   - RaiderIO score
   - best run
-  - timed run breakdown
-  - dungeon history
-  - raid context
+  - AstralKeys key when available
+  - current-key readiness summary
+  - dungeon experience matrix by bucket
   - role, spec, and item level when available
 
 ## Best-Effort Enrichment

@@ -56,6 +56,20 @@ local sourcePriority = {
     guild_friend = 3
 }
 
+local raiderIORegionOrder = {
+    Americas = 1,
+    Europe = 2,
+    Korea = 3,
+    Taiwan = 4,
+    China = 5
+}
+
+local raiderIOTypeOrder = {
+    ["Mythic Plus"] = 1,
+    Raiding = 2,
+    Recruitment = 3
+}
+
 local function OnEvent(_, event, ...)
     local handlers = ns.eventRegistry[event]
     if not handlers then
@@ -236,6 +250,58 @@ local function NormalizeColorResult(a, b, c)
     end
 
     return nil
+end
+
+local function AppendUnique(list, seen, value)
+    if type(value) ~= "string" or value == "" or seen[value] then
+        return
+    end
+
+    seen[value] = true
+    list[#list + 1] = value
+end
+
+local function SortStrings(values, orderMap)
+    table.sort(values, function(left, right)
+        local leftOrder = orderMap and orderMap[left] or nil
+        local rightOrder = orderMap and orderMap[right] or nil
+        if leftOrder and rightOrder and leftOrder ~= rightOrder then
+            return leftOrder < rightOrder
+        end
+
+        if leftOrder and not rightOrder then
+            return true
+        end
+
+        if rightOrder and not leftOrder then
+            return false
+        end
+
+        return left < right
+    end)
+end
+
+local function GetRaiderIOVersionStamp(version)
+    if type(version) ~= "string" then
+        return nil, nil
+    end
+
+    local raw = version:match("v(%d%d%d%d%d%d%d%d%d%d%d%d)")
+    if not raw then
+        return nil, nil
+    end
+
+    local year, month, day, hour, minute = raw:match("(%d%d%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
+    if not year then
+        return raw, nil
+    end
+
+    return raw, ("%s-%s-%s %s:%s"):format(year, month, day, hour, minute)
+end
+
+local function ParseRaiderIOVersionTimestamp(version)
+    local _, timestampText = GetRaiderIOVersionStamp(version)
+    return timestampText
 end
 
 function ns:GetDisplayedItemLevel(itemLevel)
@@ -456,6 +522,176 @@ function ns:IsRaiderIOAvailable()
     return _G.RaiderIO
         and type(_G.RaiderIO.GetProfile) == "function"
         and type(_G.RaiderIO.ShowProfile) == "function"
+end
+
+function ns:GetAddOnMetadata(addon, field)
+    if C_AddOns and type(C_AddOns.GetAddOnMetadata) == "function" then
+        return C_AddOns.GetAddOnMetadata(addon, field)
+    end
+
+    if type(GetAddOnMetadata) == "function" then
+        return GetAddOnMetadata(addon, field)
+    end
+
+    return nil
+end
+
+function ns:IsAddOnLoaded(addon)
+    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
+        return not not C_AddOns.IsAddOnLoaded(addon)
+    end
+
+    if type(IsAddOnLoaded) == "function" then
+        return not not IsAddOnLoaded(addon)
+    end
+
+    return false
+end
+
+function ns:GetAddOnCount()
+    if C_AddOns and type(C_AddOns.GetNumAddOns) == "function" then
+        return C_AddOns.GetNumAddOns()
+    end
+
+    if type(GetNumAddOns) == "function" then
+        return GetNumAddOns()
+    end
+
+    return 0
+end
+
+function ns:GetAddOnName(index)
+    if C_AddOns and type(C_AddOns.GetAddOnInfo) == "function" then
+        local info = C_AddOns.GetAddOnInfo(index)
+        if type(info) == "table" then
+            return info.name
+        end
+
+        return info
+    end
+
+    if type(GetAddOnInfo) == "function" then
+        local name = GetAddOnInfo(index)
+        return name
+    end
+
+    return nil
+end
+
+function ns:GetRaiderIOMetadata()
+    local metadata = {
+        status = ns:IsRaiderIOAvailable() and "detected" or "missing",
+        coreVersion = ns:GetAddOnMetadata("RaiderIO", "Version"),
+        loadedRegions = {},
+        loadedVersions = {},
+        loadedTimestamps = {},
+        datasets = {},
+        loadedRegionText = (ns.L and ns.L.SETTINGS_RAIDERIO_NONE) or (NONE or "None"),
+        versionText = (ns.L and ns.L.UNKNOWN) or (UNKNOWN or "Unknown"),
+        timestampText = (ns.L and ns.L.UNKNOWN) or (UNKNOWN or "Unknown")
+    }
+
+    local loadedRegionMap = {}
+    local loadedRegionSeen = {}
+    local loadedVersionSeen = {}
+    local loadedTimestampSeen = {}
+    local datasetSeen = {}
+
+    for index = 1, ns:GetAddOnCount() do
+        local addonName = ns:GetAddOnName(index)
+        if type(addonName) == "string"
+            and addonName:match("^RaiderIO_DB_")
+            and ns:IsAddOnLoaded(addonName) then
+            local region = ns:GetAddOnMetadata(addonName, "X-Region")
+            local dataType = ns:GetAddOnMetadata(addonName, "X-Type")
+            local version = ns:GetAddOnMetadata(addonName, "Version")
+            local stampRaw, timestampText = GetRaiderIOVersionStamp(version)
+
+            if region then
+                local regionData = loadedRegionMap[region]
+                if not regionData then
+                    regionData = {
+                        types = {},
+                        typeSeen = {}
+                    }
+                    loadedRegionMap[region] = regionData
+                end
+
+                AppendUnique(metadata.loadedRegions, loadedRegionSeen, region)
+                AppendUnique(regionData.types, regionData.typeSeen, dataType)
+            end
+
+            AppendUnique(metadata.loadedVersions, loadedVersionSeen, version)
+            AppendUnique(metadata.loadedTimestamps, loadedTimestampSeen, timestampText)
+
+            if region and dataType and stampRaw then
+                local datasetKey = ("%s|%s|%s"):format(region, dataType, stampRaw)
+                if not datasetSeen[datasetKey] then
+                    datasetSeen[datasetKey] = true
+                    metadata.datasets[#metadata.datasets + 1] = {
+                        key = ("%s|%s"):format(region, dataType),
+                        region = region,
+                        dataType = dataType,
+                        version = version,
+                        stampRaw = stampRaw,
+                        stamp = tonumber(stampRaw),
+                        timestampText = timestampText
+                    }
+                end
+            end
+        end
+    end
+
+    if #metadata.loadedRegions > 0 then
+        SortStrings(metadata.loadedRegions, raiderIORegionOrder)
+
+        local regionEntries = {}
+        for index = 1, #metadata.loadedRegions do
+            local region = metadata.loadedRegions[index]
+            local regionData = loadedRegionMap[region]
+            local entry = region
+
+            if regionData and #regionData.types > 0 then
+                SortStrings(regionData.types, raiderIOTypeOrder)
+                entry = ("%s (%s)"):format(region, table.concat(regionData.types, ", "))
+            end
+
+            regionEntries[#regionEntries + 1] = entry
+        end
+
+        metadata.loadedRegionText = table.concat(regionEntries, "; ")
+    end
+
+    local fallbackTimestamp = ParseRaiderIOVersionTimestamp(metadata.coreVersion)
+    if #metadata.loadedVersions > 0 then
+        metadata.versionText = table.concat(metadata.loadedVersions, ", ")
+    elseif metadata.coreVersion and metadata.coreVersion ~= "" then
+        metadata.versionText = metadata.coreVersion
+    end
+
+    if #metadata.loadedTimestamps > 0 then
+        metadata.timestampText = table.concat(metadata.loadedTimestamps, ", ")
+    elseif fallbackTimestamp then
+        metadata.timestampText = fallbackTimestamp
+    end
+
+    table.sort(metadata.datasets, function(left, right)
+        local leftRegionOrder = raiderIORegionOrder[left.region] or math.huge
+        local rightRegionOrder = raiderIORegionOrder[right.region] or math.huge
+        if leftRegionOrder ~= rightRegionOrder then
+            return leftRegionOrder < rightRegionOrder
+        end
+
+        local leftTypeOrder = raiderIOTypeOrder[left.dataType] or math.huge
+        local rightTypeOrder = raiderIOTypeOrder[right.dataType] or math.huge
+        if leftTypeOrder ~= rightTypeOrder then
+            return leftTypeOrder < rightTypeOrder
+        end
+
+        return (left.stamp or 0) < (right.stamp or 0)
+    end)
+
+    return metadata
 end
 
 function ns:ShowProfileTooltip(tooltip, name, realm)
