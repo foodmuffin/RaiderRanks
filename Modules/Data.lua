@@ -5,6 +5,11 @@ local Data = {
     recordsByKey = {},
     specCatalog = {},
     currentKeyContext = {
+        mapID = nil,
+        mapName = nil,
+        level = nil,
+        texture = nil,
+        backgroundTexture = nil,
         qualifiedCount = 0,
         qualifiedByRole = {
             tank = 0,
@@ -71,7 +76,10 @@ function Data:CreateBlankRecord(name, realm)
         raidSummary = {},
         unitToken = nil,
         hasRenderableProfile = false,
-        isQualifiedForCurrentKey = false
+        isQualifiedForCurrentKey = false,
+        currentKeyStatus = nil,
+        currentKeyLevel = nil,
+        currentKeyChests = nil
     }
 end
 
@@ -140,7 +148,7 @@ function Data:CollectGuild()
         return
     end
 
-    local count = GetNumGuildMembers()
+    local count = GetNumGuildMembers(true)
     for index = 1, count do
         local name, _, rankIndex, level, _, _, _, _, online, _, classFileName, _, _, _, _, _, guid = GetGuildRosterInfo(index)
         if name then
@@ -321,10 +329,15 @@ function Data:BuildFlatRecords()
 end
 
 function Data:IsRecordQualifiedForMap(record, mapID, keyLevel)
+    return self:GetRecordCurrentKeyStatus(record, mapID, keyLevel) ~= nil
+end
+
+function Data:GetRecordCurrentKeyStatus(record, mapID, keyLevel)
     if not record or not mapID or not keyLevel then
-        return false
+        return nil, nil
     end
 
+    local bestProfile = nil
     for index = 1, #(record.sortedDungeons or {}) do
         local dungeonProfile = record.sortedDungeons[index]
         local dungeon = dungeonProfile and dungeonProfile.dungeon
@@ -334,21 +347,42 @@ function Data:IsRecordQualifiedForMap(record, mapID, keyLevel)
                 or dungeon.instance_map_id == mapID
                 or dungeon.index == mapID
             if isMatch and (dungeonProfile.level or 0) >= keyLevel then
-                return true
+                if not bestProfile
+                    or (dungeonProfile.level or 0) > (bestProfile.level or 0)
+                    or ((dungeonProfile.level or 0) == (bestProfile.level or 0) and (dungeonProfile.chests or 0) > (bestProfile.chests or 0)) then
+                    bestProfile = dungeonProfile
+                end
             end
         end
     end
 
-    return false
+    if not bestProfile then
+        return nil, nil
+    end
+
+    local chests = bestProfile.chests or 0
+    if chests >= 2 then
+        return "plus2", bestProfile
+    elseif chests >= 1 then
+        return "timed", bestProfile
+    end
+
+    return "completed", bestProfile
 end
 
 function Data:UpdateCurrentKeyContext()
     local mapID = C_MythicPlus and C_MythicPlus.GetOwnedKeystoneChallengeMapID and C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local level = C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel and C_MythicPlus.GetOwnedKeystoneLevel()
+    local mapName, _, _, texture, backgroundTexture
+    if mapID and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
+        mapName, _, _, texture, backgroundTexture = C_ChallengeMode.GetMapUIInfo(mapID)
+    end
     local context = {
         mapID = mapID,
-        mapName = mapID and C_ChallengeMode.GetMapUIInfo(mapID) or nil,
+        mapName = mapName,
         level = level,
+        texture = texture,
+        backgroundTexture = backgroundTexture,
         qualifiedCount = 0,
         qualifiedByRole = GetEmptyQualifiedByRole(),
         qualifiedMembers = {},
@@ -358,6 +392,9 @@ function Data:UpdateCurrentKeyContext()
     if not mapID or not level then
         for index = 1, #self.records do
             self.records[index].isQualifiedForCurrentKey = false
+            self.records[index].currentKeyStatus = nil
+            self.records[index].currentKeyLevel = nil
+            self.records[index].currentKeyChests = nil
         end
         self.currentKeyContext = context
         return
@@ -365,8 +402,12 @@ function Data:UpdateCurrentKeyContext()
 
     for index = 1, #self.records do
         local record = self.records[index]
-        record.isQualifiedForCurrentKey = self:IsRecordQualifiedForMap(record, mapID, level)
-        if record.isQualifiedForCurrentKey then
+        local status, dungeonProfile = self:GetRecordCurrentKeyStatus(record, mapID, level)
+        record.isQualifiedForCurrentKey = status ~= nil
+        record.currentKeyStatus = status
+        record.currentKeyLevel = dungeonProfile and dungeonProfile.level or nil
+        record.currentKeyChests = dungeonProfile and dungeonProfile.chests or nil
+        if status then
             context.qualifiedCount = context.qualifiedCount + 1
             context.qualifiedByRole[record.roleBucket or "unknown"] = (context.qualifiedByRole[record.roleBucket or "unknown"] or 0) + 1
             table.insert(context.qualifiedMembers, record)
@@ -403,6 +444,10 @@ function Data:CompareRecords(left, right)
 
     if (left.timed15 or 0) ~= (right.timed15 or 0) then
         return (left.timed15 or 0) > (right.timed15 or 0)
+    end
+
+    if (left.equippedItemLevel or 0) ~= (right.equippedItemLevel or 0) then
+        return (left.equippedItemLevel or 0) > (right.equippedItemLevel or 0)
     end
 
     return (left.fullName or "") < (right.fullName or "")

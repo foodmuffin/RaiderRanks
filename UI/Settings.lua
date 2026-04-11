@@ -88,7 +88,6 @@ function SettingsPanel:Create()
     AddCheckbox(ns.L.SETTING_ENABLE_INSPECT, "enableInspectEnrichment")
     AddCheckbox(ns.L.SETTING_SHOW_RAID_CONTEXT, "showRaidContext")
     AddCheckbox(ns.L.SETTING_GROUP_BY_ROLE, "groupByRole")
-    AddCheckbox(ns.L.SETTING_SHOW_CURRENT_KEY_HELPER, "showCurrentKeyHelper")
 
     panel:SetScript("OnShow", function()
         SettingsPanel:Refresh()

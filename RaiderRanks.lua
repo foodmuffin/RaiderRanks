@@ -114,6 +114,27 @@ function ns:ComposeFullName(name, realm)
     return ("%s-%s"):format(name, realm)
 end
 
+function ns:GetDisplayName(name, realm)
+    if not name or name == "" then
+        return ""
+    end
+
+    realm = ns:TrimRealmName(realm)
+    if not realm or realm == "" or realm == ns.playerRealm then
+        return name
+    end
+
+    return ("%s-%s"):format(name, realm)
+end
+
+function ns:GetRecordDisplayName(record)
+    if not record then
+        return ""
+    end
+
+    return ns:GetDisplayName(record.name, record.realm)
+end
+
 function ns:Round(value, precision)
     local multiplier = 10 ^ (precision or 0)
     return math.floor(value * multiplier + 0.5) / multiplier
