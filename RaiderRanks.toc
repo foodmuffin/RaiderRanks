@@ -1,0 +1,17 @@
+## Interface: 120000, 120001, 120005
+## Title: RaiderRanks
+## Notes: Native guild and friends Mythic+ rankings powered by RaiderIO.
+## Author: OpenAI
+## Version: 0.1.0
+## IconTexture: Interface\Icons\inv_10_dungeon_mythicpluskey_color4
+## SavedVariables: RaiderRanksDB
+## OptionalDeps: RaiderIO
+
+Localization/Locale.lua
+Localization/enUS.lua
+RaiderRanks.lua
+Modules/Config.lua
+Modules/Inspect.lua
+Modules/Data.lua
+UI/Panel.lua
+UI/Settings.lua
