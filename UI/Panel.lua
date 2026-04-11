@@ -51,6 +51,7 @@ local rankIcons = {
 local selfEntryTexture = "Interface\\CharacterFrame\\UI-Player-PlayTimeUnhealthy"
 local currentKeyFallbackTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
 local currentKeyCheckTexture = "Interface\\Buttons\\UI-CheckBox-Check"
+local friendSourceTexture = "Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon"
 
 local function CreateDivider(parent, topAnchor, topOffset)
     local divider = parent:CreateTexture(nil, "ARTWORK")
@@ -204,6 +205,22 @@ local function GetSourceLabel(record)
     return L.UNKNOWN
 end
 
+local function ShouldShowFriendSourceIcon(record)
+    if not record then
+        return false
+    end
+
+    if ns.Config:Get("sourceFilter") ~= "all" then
+        return false
+    end
+
+    if record.source ~= "friend" then
+        return false
+    end
+
+    return true
+end
+
 local function ApplyScoreColor(fontString, score)
     if not fontString then
         return
@@ -301,7 +318,7 @@ local function UpdateCurrentKeyHeader(header)
         header.level:SetPoint("LEFT", header.icon, "RIGHT", 2, 0)
         header.level:SetWidth(20)
         header.level:SetJustifyH("LEFT")
-        header.level:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+        header.level:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
         header.level:SetText("+" .. context.level)
     else
         header.icon:SetTexture(nil)
@@ -661,9 +678,11 @@ function Panel:CreateHeader(frame)
     frame.description:SetJustifyH("LEFT")
     frame.description:SetWordWrap(false)
     frame.description:SetWidth(620)
+    frame.description:SetText("")
+    frame.description:Hide()
 
     frame.allButton = self:CreateSourceButton(frame, ns.L.ALL, "all")
-    frame.allButton:SetPoint("TOPLEFT", frame.description, "BOTTOMLEFT", 0, -10)
+    frame.allButton:SetPoint("TOPLEFT", frame, "TOPLEFT", 84, -34)
 
     frame.guildButton = self:CreateSourceButton(frame, ns.L.GUILD_ONLY, "guild")
     frame.guildButton:SetPoint("LEFT", frame.allButton, "RIGHT", 8, 0)
@@ -700,6 +719,7 @@ function Panel:CreateHeader(frame)
     frame.classLabel = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     frame.classLabel:SetPoint("TOPLEFT", frame.allButton, "BOTTOMLEFT", 0, -14)
     frame.classLabel:SetText(ns.L.CLASS_FILTER)
+    frame.classLabel:Hide()
 
     frame.classDropdown = self:EnsureClassDropdown()
 
@@ -717,6 +737,7 @@ end
 
 function Panel:ApplyListRowLayout(row)
     local layout = self.listColumnLayout
+    local markerGutterWidth = 26
     if not row or not layout then
         return
     end
@@ -729,12 +750,13 @@ function Panel:ApplyListRowLayout(row)
     row.rank:ClearAllPoints()
     row.rank:SetPoint("LEFT", layout.xRank, 0)
 
-    row.selfMarker:ClearAllPoints()
-    row.selfMarker:SetPoint("LEFT", layout.xName, 0)
+    row.markerGutter:ClearAllPoints()
+    row.markerGutter:SetPoint("LEFT", layout.xName, 0)
+    row.markerGutter:SetSize(markerGutterWidth, 12)
 
-    row.name:SetWidth(math.max(80, layout.nameWidth - 16))
+    row.name:SetWidth(math.max(80, layout.nameWidth - markerGutterWidth - 4))
     row.name:ClearAllPoints()
-    row.name:SetPoint("LEFT", row.selfMarker, "RIGHT", 4, 0)
+    row.name:SetPoint("LEFT", row.markerGutter, "RIGHT", 4, 0)
 
     row.roleIcon:ClearAllPoints()
     row.roleIcon:SetPoint("LEFT", layout.xRole + math.floor((layout.roleWidth - 14) / 2), 0)
@@ -867,10 +889,19 @@ function Panel:InitializeListRow(row)
     row.selfAccent:Hide()
 
     row.rank = CreateInlineText(row, 24, "LEFT")
-    row.selfMarker = row:CreateTexture(nil, "ARTWORK")
+    row.markerGutter = CreateFrame("Frame", nil, row)
+    row.markerGutter:SetSize(26, 12)
+
+    row.selfMarker = row.markerGutter:CreateTexture(nil, "ARTWORK")
     row.selfMarker:SetSize(12, 12)
     row.selfMarker:SetTexture(selfEntryTexture)
     row.selfMarker:Hide()
+
+    row.friendMarker = row.markerGutter:CreateTexture(nil, "ARTWORK")
+    row.friendMarker:SetSize(12, 12)
+    row.friendMarker:SetTexture(friendSourceTexture)
+    row.friendMarker:Hide()
+
     row.name = CreateInlineText(row, 140, "LEFT")
 
     row.roleIcon = row:CreateTexture(nil, "ARTWORK")
@@ -930,6 +961,7 @@ function Panel:ApplyListRowData(row, data)
         row.selfGlow:Hide()
         row.selfAccent:Hide()
         row.selfMarker:Hide()
+        row.friendMarker:Hide()
         row.rank:SetText("")
         row.name:SetText(("%s %s"):format(ns:GetRoleMarkup(data.roleBucket), data.label))
         row.name:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
@@ -954,10 +986,24 @@ function Panel:ApplyListRowData(row, data)
 
     local stripeIndex = data.displayRank or data.displayIndex or 1
     local isPlayerEntry = data.fullName and ns.playerFullName and data.fullName == ns.playerFullName
+    local showFriendMarker = ShouldShowFriendSourceIcon(data)
     row.background:SetColorTexture(0, 0, 0, stripeIndex % 2 == 0 and 0.05 or 0.1)
     row.selfGlow:SetShown(isPlayerEntry)
     row.selfAccent:SetShown(isPlayerEntry)
     row.selfMarker:SetShown(isPlayerEntry)
+    row.friendMarker:SetShown(showFriendMarker)
+
+    row.selfMarker:ClearAllPoints()
+    row.friendMarker:ClearAllPoints()
+    row.selfMarker:SetPoint("LEFT", row.markerGutter, "LEFT", 0, 0)
+    if showFriendMarker then
+        if isPlayerEntry then
+            row.friendMarker:SetPoint("LEFT", row.selfMarker, "RIGHT", 2, 0)
+        else
+            row.friendMarker:SetPoint("LEFT", row.markerGutter, "LEFT", 0, 0)
+        end
+    end
+
     ApplyRankPresentation(row.rank, data.roleRank or data.displayRank or 0)
     row.name:SetText(ns:GetRecordDisplayName(data))
     row.name:SetTextColor(ns:GetClassColor(data.classFile):GetRGB())
@@ -1330,10 +1376,14 @@ function Panel:ApplyLayout()
     frame.description:ClearAllPoints()
     frame.description:SetPoint("TOPLEFT", leftInset, -14)
     frame.description:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -descriptionRightInset, -14)
+    frame.description:Hide()
 
-    local sourceBottom = LayoutFlowRow(
+    frame.classLabel:Hide()
+
+    local dropdown = self:EnsureClassDropdown()
+    local toolbarBottom = LayoutFlowRow(
         frame,
-        { frame.allButton, frame.guildButton, frame.friendsButton },
+        { frame.allButton, frame.guildButton, frame.friendsButton, frame.onlineOnly, frame.groupByRole, dropdown },
         leftInset,
         settingsLeft - 16,
         headerTop,
@@ -1341,31 +1391,7 @@ function Panel:ApplyLayout()
         6
     )
 
-    local toggleBottom = LayoutFlowRow(
-        frame,
-        { frame.onlineOnly, frame.groupByRole },
-        leftInset,
-        width - rightInset,
-        sourceBottom - 8,
-        12,
-        6
-    )
-
-    frame.classLabel:ClearAllPoints()
-    frame.classLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", leftInset, toggleBottom - 14)
-
-    local dropdown = self:EnsureClassDropdown()
-    if dropdown then
-        dropdown:ClearAllPoints()
-        dropdown:SetPoint("TOPLEFT", frame.classLabel, "BOTTOMLEFT", -16, -2)
-    end
-
-    local specBottom = toggleBottom - 44
-    if dropdown and dropdown.GetHeight then
-        specBottom = (toggleBottom - 14) - math.max(dropdown:GetHeight(), 24)
-    end
-
-    local topOffset = specBottom - 12
+    local topOffset = toolbarBottom - 12
 
     frame.detail:ClearAllPoints()
     frame.detail:SetPoint("TOPRIGHT", 0, topOffset)
@@ -1608,7 +1634,8 @@ function Panel:RefreshHeaderControls()
         return
     end
 
-    frame.description:SetText(ns:IsRaiderIOAvailable() and ns.L.ADDON_DESCRIPTION or ns.L.RAIDERIO_MISSING)
+    frame.description:SetText("")
+    frame.description:Hide()
 
     local sourceFilter = ns.Config:Get("sourceFilter")
     local buttons = { frame.allButton, frame.guildButton, frame.friendsButton }

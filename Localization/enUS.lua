@@ -4,7 +4,7 @@ local L = ns:NewLocale()
 ns.L = L
 
 L.ADDON_TITLE = "Raider Ranks"
-L.ADDON_DESCRIPTION = "Ranks guild members and friends using RaiderIO Mythic+ data inside Group Finder."
+L.ADDON_DESCRIPTION = "Requires RaiderIO. Ranks guild members and friends using RaiderIO Mythic+ data inside Group Finder."
 L.COMPARTMENT_TOOLTIP = "Left-click to open the Raider Ranks tab.\nRight-click to open settings."
 L.SLASH_HELP = "/rranks opens the Raider Ranks tab in Group Finder."
 L.SLASH_REFRESH = "Refresh"

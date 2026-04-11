@@ -3,6 +3,14 @@ local _, ns = ...
 local Config = {}
 ns.Config = Config
 
+local alwaysOnKeys = {
+    enableGuildInline = true,
+    enableFriendsInline = true,
+    showItemLevel = true,
+    enableInspectEnrichment = true,
+    showRaidContext = true
+}
+
 local defaults = {
     enableGuildInline = true,
     enableFriendsInline = true,
@@ -64,10 +72,18 @@ function Config:Initialize()
         _G.RaiderRanksDB.migrations.classFilterEnabled = true
     end
 
+    for key in pairs(alwaysOnKeys) do
+        _G.RaiderRanksDB[key] = true
+    end
+
     ns.db = _G.RaiderRanksDB
 end
 
 function Config:Get(key)
+    if alwaysOnKeys[key] then
+        return true
+    end
+
     if not ns.db then
         return defaults[key]
     end
@@ -83,6 +99,10 @@ end
 function Config:Set(key, value)
     if not ns.db then
         return
+    end
+
+    if alwaysOnKeys[key] then
+        value = true
     end
 
     ns.db[key] = value

@@ -70,7 +70,7 @@ local function GetDetailedLevelInfo(itemLink)
 end
 
 function Inspect:IsEnabled()
-    return ns.db and ns.db.enableInspectEnrichment
+    return ns.Config and ns.Config:Get("enableInspectEnrichment")
 end
 
 function Inspect:Initialize()
