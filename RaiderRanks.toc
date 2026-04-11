@@ -1,9 +1,10 @@
 ## Interface: 120000, 120001, 120005
 ## Title: RaiderRanks
 ## Notes: Requires RaiderIO. Native guild and friends Mythic+ rankings powered by RaiderIO.
+## Category: Dungeons & Raids
 ## Author: OpenAI
 ## Version: 0.1.0
-## IconTexture: Interface\Icons\inv_10_dungeon_mythicpluskey_color4
+## IconTexture: Interface\AddOns\RaiderRanks\plus-20
 ## SavedVariables: RaiderRanksDB
 ## RequiredDeps: RaiderIO
 

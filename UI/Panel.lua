@@ -35,6 +35,8 @@ local expandedPVEFrame = {
     paddingY = 120
 }
 
+local addonIconTexture = "Interface\\AddOns\\RaiderRanks\\plus-20"
+
 local tabTemplates = {
     "CharacterFrameTabTemplate",
     "CharacterFrameTabButtonTemplate",
@@ -1610,6 +1612,26 @@ function Panel:UpdatePVEFrameTitle()
     end
 end
 
+function Panel:UpdatePVEFramePortrait()
+    if not PVEFrame then
+        return
+    end
+
+    local portrait = _G.PVEFramePortrait
+        or PVEFrame.portrait
+        or (PVEFrame.PortraitContainer and (PVEFrame.PortraitContainer.portrait or PVEFrame.PortraitContainer.Portrait))
+
+    if not portrait then
+        return
+    end
+
+    if type(SetPortraitToTexture) == "function" then
+        SetPortraitToTexture(portrait, addonIconTexture)
+    elseif portrait.SetTexture then
+        portrait:SetTexture(addonIconTexture)
+    end
+end
+
 function Panel:SelectIntegratedTab()
     if not self:EnsureCreated() then
         return
@@ -1617,6 +1639,7 @@ function Panel:SelectIntegratedTab()
 
     self:ExpandPVEFrame()
     self:UpdatePVEFrameTitle()
+    self:UpdatePVEFramePortrait()
 
     if PanelTemplates_SetTab and self.tabID then
         PanelTemplates_SetTab(PVEFrame, self.tabID)
