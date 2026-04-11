@@ -288,13 +288,32 @@ local function UpdateCurrentKeyHeader(header)
     end
 
     local context = ns.Data:GetCurrentKeyContext() or {}
-    local texture = context.texture or context.backgroundTexture or currentKeyFallbackTexture
+    if context.mapID and context.level then
+        local texture = context.texture or context.backgroundTexture or currentKeyFallbackTexture
 
-    header.icon:SetTexture(texture)
-    header.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    header.icon:SetDesaturated(not context.mapID)
-    header.icon:SetVertexColor(context.mapID and 1 or 0.55, context.mapID and 1 or 0.55, context.mapID and 1 or 0.55, 1)
-    header.level:SetText(context.level and ("+" .. context.level) or "")
+        header.icon:Show()
+        header.icon:SetTexture(texture)
+        header.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        header.icon:SetDesaturated(false)
+        header.icon:SetVertexColor(1, 1, 1, 1)
+
+        header.level:ClearAllPoints()
+        header.level:SetPoint("LEFT", header.icon, "RIGHT", 2, 0)
+        header.level:SetWidth(20)
+        header.level:SetJustifyH("LEFT")
+        header.level:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+        header.level:SetText("+" .. context.level)
+    else
+        header.icon:SetTexture(nil)
+        header.icon:Hide()
+
+        header.level:ClearAllPoints()
+        header.level:SetPoint("CENTER", header, "CENTER", 0, 0)
+        header.level:SetWidth(header:GetWidth())
+        header.level:SetJustifyH("CENTER")
+        header.level:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
+        header.level:SetText("-")
+    end
 end
 
 local function BuildCurrentKeyTooltipIcons(count, red, green, blue)
@@ -1094,13 +1113,18 @@ function Panel:CreateList(frame)
     frame.list.emptyText:SetText(ns.L.NO_DATA)
     frame.list.emptyText:Hide()
 
+    local scrollBarInset = 6
+    local scrollBarGap = 6
+
     frame.scrollBox = CreateFrame("Frame", nil, frame.list.body, "WowScrollBoxList")
     frame.scrollBox:SetPoint("TOPLEFT", frame.list.body, "TOPLEFT", 0, 0)
-    frame.scrollBox:SetPoint("BOTTOMRIGHT", frame.list.body, "BOTTOMRIGHT", -36, 0)
 
     frame.scrollBar = CreateFrame("EventFrame", nil, frame.list.body, "MinimalScrollBar")
-    frame.scrollBar:SetPoint("TOPRIGHT", frame.list.body, "TOPRIGHT", -2, 0)
-    frame.scrollBar:SetPoint("BOTTOMRIGHT", frame.list.body, "BOTTOMRIGHT", -2, 0)
+    frame.scrollBar:SetPoint("TOPRIGHT", frame.list.body, "TOPRIGHT", -scrollBarInset, 0)
+    frame.scrollBar:SetPoint("BOTTOMRIGHT", frame.list.body, "BOTTOMRIGHT", -scrollBarInset, 0)
+
+    frame.scrollBox:SetPoint("BOTTOMRIGHT", frame.scrollBar, "BOTTOMLEFT", -scrollBarGap, 0)
+    frame.scrollBox:SetPoint("TOPRIGHT", frame.scrollBar, "TOPLEFT", -scrollBarGap, 0)
 
     if frame.scrollBox.SetInterpolateScroll then
         frame.scrollBox:SetInterpolateScroll(true)
