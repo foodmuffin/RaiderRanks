@@ -13,5 +13,6 @@ RaiderRanks.lua
 Modules/Config.lua
 Modules/Inspect.lua
 Modules/Data.lua
+UI/DetailPanel.lua
 UI/Panel.lua
 UI/Settings.lua

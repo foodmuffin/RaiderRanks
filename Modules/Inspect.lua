@@ -73,6 +73,19 @@ function Inspect:IsEnabled()
     return ns.db and ns.db.enableInspectEnrichment
 end
 
+function Inspect:Initialize()
+    if not ns.db then
+        return
+    end
+
+    ns.db.inspectCache = ns.db.inspectCache or {}
+    ns.db.inspectCache.byName = ns.db.inspectCache.byName or {}
+    ns.db.inspectCache.byGUID = ns.db.inspectCache.byGUID or {}
+
+    self.cache = ns.db.inspectCache.byName
+    self.cacheByGUID = ns.db.inspectCache.byGUID
+end
+
 function Inspect:ResolveUnit(fullName)
     if not fullName then
         return nil
@@ -91,11 +104,11 @@ end
 function Inspect:GetPlayerItemLevel()
     local average, equipped = GetAverageItemLevel()
     if type(equipped) == "number" and equipped > 0 then
-        return ns:Round(equipped, 1)
+        return equipped
     end
 
     if type(average) == "number" and average > 0 then
-        return ns:Round(average, 1)
+        return average
     end
 
     return nil
@@ -133,7 +146,7 @@ function Inspect:ComputeInspectedItemLevel(unit)
         local value1, value2 = C_PaperDollInfo.GetInspectItemLevel(unit)
         local itemLevel = value2 or value1
         if type(itemLevel) == "number" and itemLevel > 0 then
-            return ns:Round(itemLevel, 1)
+            return itemLevel
         end
     end
 
@@ -155,7 +168,7 @@ function Inspect:ComputeInspectedItemLevel(unit)
         return nil
     end
 
-    return ns:Round(total / count, 1)
+    return total / count
 end
 
 function Inspect:ApplyLiveData(record)
@@ -177,12 +190,15 @@ function Inspect:ApplyLiveData(record)
     end
 
     if UnitIsUnit(unit, "player") then
+        local timestamp = ns:GetCurrentTimestamp()
         local specData = self:GetPlayerSpec()
         if specData then
             record.specID = specData.specID
             record.specName = specData.specName
             record.specIcon = specData.specIcon
             record.specSource = "self"
+            record.specObservedAt = timestamp
+            record.specIsStale = false
             if record.roleSource ~= "group" and specData.roleBucket ~= "unknown" then
                 record.roleBucket = specData.roleBucket
             end
@@ -192,6 +208,8 @@ function Inspect:ApplyLiveData(record)
         if itemLevel then
             record.equippedItemLevel = itemLevel
             record.itemLevelSource = "self"
+            record.itemLevelObservedAt = timestamp
+            record.itemLevelIsStale = false
         end
     end
 end
@@ -206,16 +224,20 @@ function Inspect:ApplyCachedData(record)
         return
     end
 
-    if cached.specID then
+    if cached.specID and record.specSource ~= "self" then
         record.specID = cached.specID
         record.specName = cached.specName
         record.specIcon = cached.specIcon
         record.specSource = "inspect"
+        record.specObservedAt = cached.specObservedAt or cached.observedAt
+        record.specIsStale = ns:IsDataStale(record.specObservedAt)
     end
 
-    if cached.itemLevel then
+    if cached.itemLevel and record.itemLevelSource ~= "self" then
         record.equippedItemLevel = cached.itemLevel
         record.itemLevelSource = "inspect"
+        record.itemLevelObservedAt = cached.itemLevelObservedAt or cached.observedAt
+        record.itemLevelIsStale = ns:IsDataStale(record.itemLevelObservedAt)
     end
 
     if cached.roleBucket and record.roleSource ~= "group" then
@@ -271,7 +293,7 @@ function Inspect:CompletePending(payload)
 
     ClearInspectPlayer()
 
-    if pending and payload then
+    if pending and payload and next(payload) then
         self.cache[pending.fullName] = payload
         if pending.guid then
             self.cacheByGUID[pending.guid] = payload
@@ -325,6 +347,7 @@ local function HandleInspectReady(guid)
 
     local unit = pending.unit
     local payload = {}
+    local observedAt = ns:GetCurrentTimestamp()
     local specID = GetInspectSpecialization and GetInspectSpecialization(unit)
     if specID and specID > 0 then
         local _, specName, _, icon, role = GetSpecializationInfoByID(specID)
@@ -332,14 +355,24 @@ local function HandleInspectReady(guid)
         payload.specName = specName
         payload.specIcon = icon
         payload.roleBucket = role == "TANK" and "tank" or role == "HEALER" and "healer" or role == "DAMAGER" and "dps" or "unknown"
+        payload.specObservedAt = observedAt
     end
 
     local itemLevel = Inspect:ComputeInspectedItemLevel(unit)
     if itemLevel then
         payload.itemLevel = itemLevel
+        payload.itemLevelObservedAt = observedAt
+    end
+
+    if next(payload) then
+        payload.observedAt = observedAt
     end
 
     Inspect:CompletePending(payload)
 end
+
+ns:RegisterCallback("ADDON_READY", function()
+    Inspect:Initialize()
+end)
 
 ns:RegisterEvent("INSPECT_READY", HandleInspectReady)

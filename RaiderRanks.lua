@@ -8,6 +8,7 @@ ns.private = ns.private or {}
 ns.callbacks = ns.callbacks or {}
 ns.playerRealm = GetRealmName()
 ns.playerFullName = nil
+ns.inspectStaleAgeSeconds = 24 * 60 * 60
 
 local eventFrame = CreateFrame("Frame")
 ns.eventFrame = eventFrame
@@ -25,6 +26,28 @@ local roleAtlases = {
     healer = "roleicon-tiny-healer",
     dps = "roleicon-tiny-dps",
     unknown = "common-icon-rotateright"
+}
+
+local timedBucketLabels = {
+    timed20 = "TIMED_20",
+    timed15 = "TIMED_15",
+    timed11_14 = "TIMED_11_14",
+    timed9_10 = "TIMED_9_10",
+    timed4_8 = "TIMED_4_8",
+    timed2_3 = "TIMED_2_3"
+}
+
+local timedBucketNames = {
+    timed11_14 = "TIMED_BUCKET_MYTH",
+    timed9_10 = "TIMED_BUCKET_MYTH",
+    timed4_8 = "TIMED_BUCKET_HERO",
+    timed2_3 = "TIMED_BUCKET_CHAMPION"
+}
+
+local timedBucketIcons = {
+    timed9_10 = "Interface\\Icons\\inv_120_crest_myth",
+    timed4_8 = "Interface\\Icons\\inv_120_crest_hero",
+    timed2_3 = "Interface\\Icons\\inv_120_crest_champion"
 }
 
 local sourcePriority = {
@@ -140,6 +163,181 @@ function ns:Round(value, precision)
     return math.floor(value * multiplier + 0.5) / multiplier
 end
 
+function ns:GetCurrentTimestamp()
+    if type(GetServerTime) == "function" then
+        local timestamp = GetServerTime()
+        if type(timestamp) == "number" and timestamp > 0 then
+            return timestamp
+        end
+    end
+
+    if type(time) == "function" then
+        local timestamp = time()
+        if type(timestamp) == "number" and timestamp > 0 then
+            return timestamp
+        end
+    end
+
+    return nil
+end
+
+function ns:GetDataAge(timestamp)
+    if type(timestamp) ~= "number" or timestamp <= 0 then
+        return nil
+    end
+
+    local now = self:GetCurrentTimestamp()
+    if type(now) ~= "number" or now <= 0 then
+        return nil
+    end
+
+    return math.max(0, now - timestamp)
+end
+
+function ns:IsDataStale(timestamp)
+    local age = self:GetDataAge(timestamp)
+    return age ~= nil and age > self.inspectStaleAgeSeconds or false
+end
+
+function ns:GetDataAgeText(timestamp)
+    local age = self:GetDataAge(timestamp)
+    if not age then
+        return nil
+    end
+
+    if type(SecondsToTimeAbbrev) == "function" then
+        return SecondsToTimeAbbrev(age)
+    end
+
+    if age >= 86400 then
+        return self.L.CACHE_AGE_DAYS:format(math.floor(age / 86400))
+    end
+
+    if age >= 3600 then
+        return self.L.CACHE_AGE_HOURS:format(math.floor(age / 3600))
+    end
+
+    return self.L.CACHE_AGE_MINUTES:format(math.max(1, math.floor(age / 60)))
+end
+
+local function NormalizeColorResult(a, b, c)
+    if type(a) == "table" then
+        if a.GetRGB then
+            return a
+        end
+
+        if type(a.r) == "number" and type(a.g) == "number" and type(a.b) == "number" then
+            return CreateColor(a.r, a.g, a.b, a.a or 1)
+        end
+    end
+
+    if type(a) == "number" and type(b) == "number" and type(c) == "number" then
+        return CreateColor(a, b, c)
+    end
+
+    return nil
+end
+
+function ns:GetDisplayedItemLevel(itemLevel)
+    if type(itemLevel) ~= "number" or itemLevel <= 0 then
+        return nil
+    end
+
+    return math.floor(itemLevel + 0.5)
+end
+
+function ns:GetItemLevelText(itemLevel)
+    local displayed = self:GetDisplayedItemLevel(itemLevel)
+    if not displayed then
+        return "-"
+    end
+
+    return tostring(displayed)
+end
+
+function ns:GetItemLevelColor(itemLevel)
+    local displayed = self:GetDisplayedItemLevel(itemLevel)
+    if not displayed then
+        return HIGHLIGHT_FONT_COLOR
+    end
+
+    local color = nil
+
+    if C_PaperDollInfo and type(C_PaperDollInfo.GetItemLevelColor) == "function" then
+        local a, b, c = C_PaperDollInfo.GetItemLevelColor(displayed)
+        color = NormalizeColorResult(a, b, c)
+    end
+
+    if not color and type(PaperDollFrame_GetItemLevelColor) == "function" then
+        local a, b, c = PaperDollFrame_GetItemLevelColor(displayed)
+        color = NormalizeColorResult(a, b, c)
+    end
+
+    if not color and type(GetItemLevelColor) == "function" then
+        local a, b, c = GetItemLevelColor(displayed)
+        color = NormalizeColorResult(a, b, c)
+    end
+
+    return color or HIGHLIGHT_FONT_COLOR
+end
+
+function ns:GetColoredItemLevelText(itemLevel)
+    local text = self:GetItemLevelText(itemLevel)
+    local color = self:GetItemLevelColor(itemLevel)
+    if color and color.WrapTextInColorCode then
+        return color:WrapTextInColorCode(text)
+    end
+
+    return text
+end
+
+function ns:GetRunCountColor(count)
+    local quality = 1
+    if type(count) == "number" then
+        if count >= 9 then
+            quality = 5
+        elseif count >= 7 then
+            quality = 4
+        elseif count >= 5 then
+            quality = 3
+        elseif count >= 3 then
+            quality = 2
+        else
+            quality = 1
+        end
+    end
+
+    if type(GetItemQualityColor) == "function" then
+        local r, g, b = GetItemQualityColor(quality)
+        local color = NormalizeColorResult(r, g, b)
+        if color then
+            return color
+        end
+    end
+
+    if ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality] then
+        local entry = ITEM_QUALITY_COLORS[quality]
+        local color = NormalizeColorResult(entry)
+            or NormalizeColorResult(entry.color)
+            or NormalizeColorResult(entry.r, entry.g, entry.b)
+        if color then
+            return color
+        end
+    end
+
+    return NORMAL_FONT_COLOR
+end
+
+function ns:GetColoredRunCountText(count)
+    local text = tostring(count or 0)
+    local color = self:GetRunCountColor(count)
+    if color and color.WrapTextInColorCode then
+        return color:WrapTextInColorCode(text)
+    end
+
+    return text
+end
+
 function ns:GetRoleBucketFromGroup(unit)
     if not unit or not UnitExists(unit) then
         return nil
@@ -176,6 +374,30 @@ end
 
 function ns:GetRoleAtlas(roleBucket)
     return roleAtlases[roleBucket or "unknown"] or roleAtlases.unknown
+end
+
+function ns:GetTimedBucketLabel(bucketKey)
+    local labelKey = timedBucketLabels[bucketKey]
+    return labelKey and ns.L[labelKey] or ""
+end
+
+function ns:GetTimedBucketIcon(bucketKey)
+    return timedBucketIcons[bucketKey]
+end
+
+function ns:GetTimedBucketName(bucketKey)
+    local labelKey = timedBucketNames[bucketKey]
+    return labelKey and ns.L[labelKey] or nil
+end
+
+function ns:GetTimedBucketMarkup(bucketKey, size)
+    local texture = self:GetTimedBucketIcon(bucketKey)
+    if not texture then
+        return ""
+    end
+
+    size = size or 14
+    return ("|T%s:%d:%d:0:0|t"):format(texture, size, size)
 end
 
 function ns:GetClassColor(classFile)

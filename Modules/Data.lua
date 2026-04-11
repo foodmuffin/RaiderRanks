@@ -39,6 +39,35 @@ local function GetEmptyQualifiedByRole()
     }
 end
 
+local function CountTimedRunsAtOrAbove(sortedDungeons, threshold)
+    local count = 0
+    for index = 1, #(sortedDungeons or {}) do
+        local dungeonProfile = sortedDungeons[index]
+        if dungeonProfile
+            and (dungeonProfile.level or 0) >= threshold
+            and (dungeonProfile.chests or 0) > 0 then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function CountTimedRunsInRange(sortedDungeons, minimumLevel, maximumLevel)
+    local count = 0
+    for index = 1, #(sortedDungeons or {}) do
+        local dungeonProfile = sortedDungeons[index]
+        local level = dungeonProfile and (dungeonProfile.level or 0) or 0
+        if dungeonProfile
+            and level >= minimumLevel
+            and level <= maximumLevel
+            and (dungeonProfile.chests or 0) > 0 then
+            count = count + 1
+        end
+    end
+
+    return count
+end
+
 function Data:CreateBlankRecord(name, realm)
     local fullName = ns:ComposeFullName(name, realm)
     return {
@@ -61,17 +90,23 @@ function Data:CreateBlankRecord(name, realm)
         maxDungeonLevel = 0,
         timed20 = 0,
         timed15 = 0,
-        timed10 = 0,
-        timed5 = 0,
+        timed11_14 = 0,
+        timed9_10 = 0,
+        timed4_8 = 0,
+        timed2_3 = 0,
         sortedDungeons = {},
         equippedItemLevel = nil,
         itemLevelSource = "unknown",
+        itemLevelObservedAt = nil,
+        itemLevelIsStale = false,
         roleBucket = "unknown",
         roleSource = "unknown",
         specID = nil,
         specName = nil,
         specIcon = nil,
         specSource = "unknown",
+        specObservedAt = nil,
+        specIsStale = false,
         profileState = ns:IsRaiderIOAvailable() and "unscored" or "missing_dependency",
         raidSummary = {},
         unitToken = nil,
@@ -231,8 +266,10 @@ function Data:ApplyRaiderIO(record)
     record.maxDungeonLevel = 0
     record.timed20 = 0
     record.timed15 = 0
-    record.timed10 = 0
-    record.timed5 = 0
+    record.timed11_14 = 0
+    record.timed9_10 = 0
+    record.timed4_8 = 0
+    record.timed2_3 = 0
     record.sortedDungeons = {}
     record.raidSummary = {}
     record.hasRenderableProfile = false
@@ -260,11 +297,13 @@ function Data:ApplyRaiderIO(record)
         record.previousScore = ns:Round(mythic.previousScore or 0)
         record.mainCurrentScore = mythic.mainCurrentScore and ns:Round(mythic.mainCurrentScore) or nil
         record.maxDungeonLevel = mythic.maxDungeonLevel or 0
-        record.timed20 = mythic.keystoneTwentyPlus or 0
-        record.timed15 = mythic.keystoneFifteenPlus or 0
-        record.timed10 = mythic.keystoneTenPlus or 0
-        record.timed5 = mythic.keystoneFivePlus or 0
         record.sortedDungeons = mythic.sortedDungeons or {}
+        record.timed20 = CountTimedRunsAtOrAbove(record.sortedDungeons, 20)
+        record.timed15 = CountTimedRunsAtOrAbove(record.sortedDungeons, 15)
+        record.timed11_14 = CountTimedRunsInRange(record.sortedDungeons, 11, 14)
+        record.timed9_10 = CountTimedRunsInRange(record.sortedDungeons, 9, 10)
+        record.timed4_8 = CountTimedRunsInRange(record.sortedDungeons, 4, 8)
+        record.timed2_3 = CountTimedRunsInRange(record.sortedDungeons, 2, 3)
 
         local currentRoles = mythic.mplusCurrent and mythic.mplusCurrent.roles
         if type(currentRoles) == "table" and currentRoles[1] and currentRoles[1][1] then
@@ -292,7 +331,11 @@ end
 
 function Data:ApplyEnrichment(record)
     record.itemLevelSource = "unknown"
+    record.itemLevelObservedAt = nil
+    record.itemLevelIsStale = false
     record.specSource = "unknown"
+    record.specObservedAt = nil
+    record.specIsStale = false
     if record.roleSource ~= "raiderio" then
         record.roleSource = "unknown"
     end
@@ -338,6 +381,7 @@ function Data:GetRecordCurrentKeyStatus(record, mapID, keyLevel)
     end
 
     local bestProfile = nil
+    local bestStatusRank = 0
     for index = 1, #(record.sortedDungeons or {}) do
         local dungeonProfile = record.sortedDungeons[index]
         local dungeon = dungeonProfile and dungeonProfile.dungeon
@@ -347,10 +391,14 @@ function Data:GetRecordCurrentKeyStatus(record, mapID, keyLevel)
                 or dungeon.instance_map_id == mapID
                 or dungeon.index == mapID
             if isMatch and (dungeonProfile.level or 0) >= keyLevel then
+                local chests = dungeonProfile.chests or 0
+                local statusRank = chests >= 3 and 4 or chests >= 2 and 3 or chests >= 1 and 2 or 1
                 if not bestProfile
-                    or (dungeonProfile.level or 0) > (bestProfile.level or 0)
-                    or ((dungeonProfile.level or 0) == (bestProfile.level or 0) and (dungeonProfile.chests or 0) > (bestProfile.chests or 0)) then
+                    or statusRank > bestStatusRank
+                    or (statusRank == bestStatusRank and (dungeonProfile.level or 0) > (bestProfile.level or 0))
+                    or (statusRank == bestStatusRank and (dungeonProfile.level or 0) == (bestProfile.level or 0) and chests > (bestProfile.chests or 0)) then
                     bestProfile = dungeonProfile
+                    bestStatusRank = statusRank
                 end
             end
         end
@@ -361,7 +409,9 @@ function Data:GetRecordCurrentKeyStatus(record, mapID, keyLevel)
     end
 
     local chests = bestProfile.chests or 0
-    if chests >= 2 then
+    if chests >= 3 then
+        return "plus3", bestProfile
+    elseif chests >= 2 then
         return "plus2", bestProfile
     elseif chests >= 1 then
         return "timed", bestProfile
@@ -485,6 +535,8 @@ function Data:OnInspectDataReady(fullName, guid, payload)
         record.specName = payload.specName
         record.specIcon = payload.specIcon
         record.specSource = "inspect"
+        record.specObservedAt = payload.specObservedAt or payload.observedAt
+        record.specIsStale = ns:IsDataStale(record.specObservedAt)
         self.specCatalog[payload.specID] = {
             specID = payload.specID,
             specName = payload.specName,
@@ -495,6 +547,8 @@ function Data:OnInspectDataReady(fullName, guid, payload)
     if payload.itemLevel then
         record.equippedItemLevel = payload.itemLevel
         record.itemLevelSource = "inspect"
+        record.itemLevelObservedAt = payload.itemLevelObservedAt or payload.observedAt
+        record.itemLevelIsStale = ns:IsDataStale(record.itemLevelObservedAt)
     end
 
     if payload.roleBucket and record.roleSource ~= "group" then
@@ -513,15 +567,19 @@ function Data:OnInspectTimeout()
     ns:FireCallback("DATA_UPDATED", "inspect_timeout")
 end
 
-function Data:GetSpecOptions()
+function Data:GetClassOptions()
     local options = {}
-    for _, specInfo in pairs(self.specCatalog) do
-        table.insert(options, specInfo)
+    local count = GetNumClasses and GetNumClasses() or 0
+    for classID = 1, count do
+        local className, classFile = GetClassInfo(classID)
+        if className and classFile then
+            options[#options + 1] = {
+                classID = classID,
+                classFile = classFile,
+                className = className
+            }
+        end
     end
-
-    table.sort(options, function(left, right)
-        return left.specName < right.specName
-    end)
 
     return options
 end
@@ -539,8 +597,8 @@ function Data:GetRecords(filters)
             and ((filters.qualifiedOnly ~= true) or record.isQualifiedForCurrentKey)
 
         if passes then
-            if filters.specFilter and filters.specFilter ~= "all" then
-                passes = tonumber(filters.specFilter) == tonumber(record.specID)
+            if filters.classFilter and filters.classFilter ~= "all" then
+                passes = filters.classFilter == record.classFile
             end
         end
 

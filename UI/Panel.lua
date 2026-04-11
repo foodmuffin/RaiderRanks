@@ -48,6 +48,7 @@ local rankIcons = {
     [3] = "|TInterface\\MoneyFrame\\UI-CopperIcon:12:12:0:0|t"
 }
 
+local selfEntryTexture = "Interface\\CharacterFrame\\UI-Player-PlayTimeUnhealthy"
 local currentKeyFallbackTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
 local currentKeyCheckTexture = "Interface\\Buttons\\UI-CheckBox-Check"
 
@@ -65,6 +66,53 @@ local function CreateInlineText(parent, width, justify, fontObject)
     text:SetJustifyH(justify or "LEFT")
     text:SetWordWrap(false)
     return text
+end
+
+local function CreateNativeHeaderCell(parent, text)
+    local cell = CreateFrame("Frame", nil, parent)
+    cell:SetHeight(parent:GetHeight())
+
+    cell.background = cell:CreateTexture(nil, "BACKGROUND")
+    cell.background:SetAllPoints()
+    cell.background:SetColorTexture(0.08, 0.08, 0.09, 0.92)
+
+    cell.topBorder = cell:CreateTexture(nil, "BORDER")
+    cell.topBorder:SetPoint("TOPLEFT", 0, 0)
+    cell.topBorder:SetPoint("TOPRIGHT", 0, 0)
+    cell.topBorder:SetHeight(1)
+    cell.topBorder:SetColorTexture(0.82, 0.82, 0.86, 0.18)
+
+    cell.bottomBorder = cell:CreateTexture(nil, "BORDER")
+    cell.bottomBorder:SetPoint("BOTTOMLEFT", 0, 0)
+    cell.bottomBorder:SetPoint("BOTTOMRIGHT", 0, 0)
+    cell.bottomBorder:SetHeight(1)
+    cell.bottomBorder:SetColorTexture(0, 0, 0, 0.7)
+
+    cell.leftBorder = cell:CreateTexture(nil, "BORDER")
+    cell.leftBorder:SetPoint("TOPLEFT", 0, 0)
+    cell.leftBorder:SetPoint("BOTTOMLEFT", 0, 0)
+    cell.leftBorder:SetWidth(1)
+    cell.leftBorder:SetColorTexture(0.72, 0.72, 0.76, 0.12)
+
+    cell.rightBorder = cell:CreateTexture(nil, "BORDER")
+    cell.rightBorder:SetPoint("TOPRIGHT", 0, 0)
+    cell.rightBorder:SetPoint("BOTTOMRIGHT", 0, 0)
+    cell.rightBorder:SetWidth(1)
+    cell.rightBorder:SetColorTexture(0.72, 0.72, 0.76, 0.22)
+
+    cell.highlight = cell:CreateTexture(nil, "ARTWORK")
+    cell.highlight:SetPoint("TOPLEFT", 1, -1)
+    cell.highlight:SetPoint("TOPRIGHT", -1, -1)
+    cell.highlight:SetHeight(8)
+    cell.highlight:SetColorTexture(1, 1, 1, 0.06)
+
+    cell.label = cell:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    cell.label:SetPoint("LEFT", 8, 0)
+    cell.label:SetPoint("RIGHT", -6, 0)
+    cell.label:SetJustifyH("LEFT")
+    cell.label:SetText(text or "")
+
+    return cell
 end
 
 local function GetControlWidth(control)
@@ -165,6 +213,26 @@ local function ApplyScoreColor(fontString, score)
     fontString:SetTextColor(color:GetRGB())
 end
 
+local function ApplyItemLevelPresentation(fontString, itemLevel, isStale)
+    if not fontString then
+        return
+    end
+
+    if isStale then
+        fontString:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+    else
+        fontString:SetTextColor(ns:GetItemLevelColor(itemLevel):GetRGB())
+    end
+end
+
+local function ApplyRunCountPresentation(fontString, count)
+    if not fontString then
+        return
+    end
+
+    fontString:SetTextColor(ns:GetRunCountColor(count):GetRGB())
+end
+
 local function ApplyRankPresentation(fontString, rank)
     if not fontString then
         return
@@ -180,18 +248,19 @@ local function ApplyRankPresentation(fontString, rank)
 end
 
 local function ApplyCurrentKeyStatusIndicator(indicator, status)
-    if not indicator or not indicator.primary or not indicator.secondary then
+    if not indicator or not indicator.primary or not indicator.secondary or not indicator.tertiary then
         return
     end
 
     indicator.primary:Hide()
     indicator.secondary:Hide()
+    indicator.tertiary:Hide()
     if not status then
         return
     end
 
     local r, g, b = 1, 0.82, 0.12
-    if status == "timed" or status == "plus2" then
+    if status == "timed" or status == "plus2" or status == "plus3" then
         r, g, b = 0.25, 1, 0.25
     end
 
@@ -203,6 +272,13 @@ local function ApplyCurrentKeyStatusIndicator(indicator, status)
         indicator.secondary:SetTexture(currentKeyCheckTexture)
         indicator.secondary:SetVertexColor(r, g, b)
         indicator.secondary:Show()
+    elseif status == "plus3" then
+        indicator.secondary:SetTexture(currentKeyCheckTexture)
+        indicator.secondary:SetVertexColor(r, g, b)
+        indicator.secondary:Show()
+        indicator.tertiary:SetTexture(currentKeyCheckTexture)
+        indicator.tertiary:SetVertexColor(r, g, b)
+        indicator.tertiary:Show()
     end
 end
 
@@ -221,6 +297,19 @@ local function UpdateCurrentKeyHeader(header)
     header.level:SetText(context.level and ("+" .. context.level) or "")
 end
 
+local function BuildCurrentKeyTooltipIcons(count, red, green, blue)
+    local icons = {}
+    local r = math.floor((red or 1) * 255 + 0.5)
+    local g = math.floor((green or 1) * 255 + 0.5)
+    local b = math.floor((blue or 1) * 255 + 0.5)
+
+    for index = 1, count do
+        icons[index] = ("|T%s:12:12:0:0:64:64:0:64:0:64:%d:%d:%d:255|t"):format(currentKeyCheckTexture, r, g, b)
+    end
+
+    return table.concat(icons, "")
+end
+
 local function ShowCurrentKeyHeaderTooltip(owner)
     if not owner then
         return
@@ -230,13 +319,71 @@ local function ShowCurrentKeyHeaderTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_TOP")
     if context.mapID and context.level then
         GameTooltip:SetText(ns.L.CURRENT_KEY_TOOLTIP_LEVEL:format(context.mapName or ns.L.CURRENT_KEY, context.level))
-        GameTooltip:AddLine(ns.L.CURRENT_KEY_PLUS_TWO, 0.25, 1, 0.25)
-        GameTooltip:AddLine(ns.L.CURRENT_KEY_TIMED, 0.25, 1, 0.25)
-        GameTooltip:AddLine(ns.L.CURRENT_KEY_COMPLETED, 1, 0.82, 0.12)
+        GameTooltip:AddLine(("%s %s"):format(BuildCurrentKeyTooltipIcons(3, 0.25, 1, 0.25), ns.L.CURRENT_KEY_PLUS_THREE), 0.25, 1, 0.25)
+        GameTooltip:AddLine(("%s %s"):format(BuildCurrentKeyTooltipIcons(2, 0.25, 1, 0.25), ns.L.CURRENT_KEY_PLUS_TWO), 0.25, 1, 0.25)
+        GameTooltip:AddLine(("%s %s"):format(BuildCurrentKeyTooltipIcons(1, 0.25, 1, 0.25), ns.L.CURRENT_KEY_TIMED), 0.25, 1, 0.25)
+        GameTooltip:AddLine(("%s %s"):format(BuildCurrentKeyTooltipIcons(1, 1, 0.82, 0.12), ns.L.CURRENT_KEY_COMPLETED), 1, 0.82, 0.12)
     else
         GameTooltip:SetText(ns.L.NO_CURRENT_KEY)
     end
     GameTooltip:Show()
+end
+
+local function ShowTimedBucketHeaderTooltip(owner, bucketKey)
+    if not owner or not bucketKey then
+        return
+    end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:SetText(ns:GetTimedBucketLabel(bucketKey))
+
+    local bucketName = ns:GetTimedBucketName(bucketKey)
+    if bucketName then
+        GameTooltip:AddLine(bucketName, HIGHLIGHT_FONT_COLOR:GetRGB())
+    end
+
+    GameTooltip:Show()
+end
+
+local function ConfigureTimedBucketHeaderCell(cell, bucketKey)
+    if not cell or not cell.label then
+        return
+    end
+
+    local iconTexture = ns:GetTimedBucketIcon(bucketKey)
+    cell.bucketKey = bucketKey
+
+    if iconTexture then
+        if not cell.icon then
+            cell.icon = cell:CreateTexture(nil, "ARTWORK")
+            cell.icon:SetSize(14, 14)
+        end
+
+        cell:EnableMouse(true)
+        cell:SetScript("OnEnter", function(self)
+            ShowTimedBucketHeaderTooltip(self, self.bucketKey)
+        end)
+        cell:SetScript("OnLeave", GameTooltip_Hide)
+
+        cell.icon:ClearAllPoints()
+        cell.icon:SetPoint("CENTER", 0, 0)
+        cell.icon:SetTexture(iconTexture)
+        cell.icon:Show()
+
+        cell.label:SetText("")
+    else
+        if cell.icon then
+            cell.icon:SetTexture(nil)
+            cell.icon:Hide()
+        end
+        cell:EnableMouse(false)
+        cell:SetScript("OnEnter", nil)
+        cell:SetScript("OnLeave", nil)
+        cell.label:SetText(ns:GetTimedBucketLabel(bucketKey))
+        cell.label:ClearAllPoints()
+        cell.label:SetPoint("LEFT", 8, 0)
+        cell.label:SetPoint("RIGHT", -6, 0)
+    end
 end
 
 local function GetPVEContentAnchor()
@@ -278,8 +425,8 @@ function Panel:GetFilters()
     return {
         sourceFilter = ns.Config:Get("sourceFilter"),
         showOffline = ns.Config:Get("showOffline"),
-        showUnscored = ns.Config:Get("showUnscored"),
-        specFilter = ns.Config:Get("specFilter"),
+        showUnscored = false,
+        classFilter = ns.Config:Get("classFilter"),
         groupByRole = ns.Config:Get("groupByRole")
     }
 end
@@ -407,31 +554,31 @@ function Panel:CreateCheckButton(parent, label, tooltip, getter, setter)
     return button
 end
 
-function Panel:EnsureSpecDropdown()
-    if not self.frame or not self.frame.specLabel then
+function Panel:EnsureClassDropdown()
+    if not self.frame or not self.frame.classLabel then
         return nil
     end
 
-    if self.frame.specDropdown then
-        return self.frame.specDropdown
+    if self.frame.classDropdown then
+        return self.frame.classDropdown
     end
 
-    local dropdown = _G[addonName .. "SpecDropdown"]
+    local dropdown = _G[addonName .. "ClassDropdown"]
     if not dropdown then
-        dropdown = CreateFrame("Frame", addonName .. "SpecDropdown", self.frame, "UIDropDownMenuTemplate")
+        dropdown = CreateFrame("Frame", addonName .. "ClassDropdown", self.frame, "UIDropDownMenuTemplate")
     end
 
     if dropdown then
         dropdown:ClearAllPoints()
-        dropdown:SetPoint("LEFT", self.frame.specLabel, "RIGHT", -8, -2)
-        self.frame.specDropdown = dropdown
+        dropdown:SetPoint("LEFT", self.frame.classLabel, "RIGHT", -8, -2)
+        self.frame.classDropdown = dropdown
     end
 
     return dropdown
 end
 
-function Panel:SetSpecDropdownText(text)
-    local dropdown = self:EnsureSpecDropdown()
+function Panel:SetClassDropdownText(text)
+    local dropdown = self:EnsureClassDropdown()
     if not dropdown then
         return
     end
@@ -444,8 +591,8 @@ function Panel:SetSpecDropdownText(text)
     end
 end
 
-function Panel:BuildSpecDropdown()
-    local dropdown = self:EnsureSpecDropdown()
+function Panel:BuildClassDropdown()
+    local dropdown = self:EnsureClassDropdown()
     if not dropdown or not UIDropDownMenu_Initialize then
         return
     end
@@ -454,29 +601,35 @@ function Panel:BuildSpecDropdown()
         UIDropDownMenu_SetWidth(dropdown, 150)
     end
 
+    if UIDropDownMenu_JustifyText then
+        UIDropDownMenu_JustifyText(dropdown, "LEFT")
+    end
+
     UIDropDownMenu_Initialize(dropdown, function(_, level)
         if level ~= 1 then
             return
         end
 
         local info = UIDropDownMenu_CreateInfo()
-        info.text = ns.L.ALL_SPECS
+        info.text = ns.L.ALL_CLASSES
         info.value = "all"
-        info.checked = ns.Config:Get("specFilter") == "all"
+        info.checked = ns.Config:Get("classFilter") == "all"
+        info.isNotRadio = false
         info.func = function()
-            ns.Config:Set("specFilter", "all")
+            ns.Config:Set("classFilter", "all")
         end
         UIDropDownMenu_AddButton(info, level)
 
-        local options = ns.Data:GetSpecOptions()
+        local options = ns.Data:GetClassOptions()
         for index = 1, #options do
-            local specInfo = options[index]
+            local classInfo = options[index]
             info = UIDropDownMenu_CreateInfo()
-            info.text = specInfo.specName
-            info.value = specInfo.specID
-            info.checked = tonumber(ns.Config:Get("specFilter")) == tonumber(specInfo.specID)
+            info.text = classInfo.className
+            info.value = classInfo.classFile
+            info.checked = ns.Config:Get("classFilter") == classInfo.classFile
+            info.isNotRadio = false
             info.func = function()
-                ns.Config:Set("specFilter", specInfo.specID)
+                ns.Config:Set("classFilter", classInfo.classFile)
             end
             UIDropDownMenu_AddButton(info, level)
         end
@@ -512,19 +665,6 @@ function Panel:CreateHeader(frame)
     )
     frame.onlineOnly:SetPoint("LEFT", frame.friendsButton, "RIGHT", 12, 0)
 
-    frame.showUnscored = self:CreateCheckButton(
-        frame,
-        ns.L.SHOW_UNSCORED,
-        nil,
-        function()
-            return ns.Config:Get("showUnscored")
-        end,
-        function(value)
-            ns.Config:Set("showUnscored", value)
-        end
-    )
-    frame.showUnscored:SetPoint("LEFT", frame.onlineOnly, "RIGHT", 6, 0)
-
     frame.groupByRole = self:CreateCheckButton(
         frame,
         ns.L.GROUP_BY_ROLE,
@@ -536,13 +676,13 @@ function Panel:CreateHeader(frame)
             ns.Config:Set("groupByRole", value)
         end
     )
-    frame.groupByRole:SetPoint("LEFT", frame.showUnscored, "RIGHT", 6, 0)
+    frame.groupByRole:SetPoint("LEFT", frame.onlineOnly, "RIGHT", 6, 0)
 
-    frame.specLabel = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    frame.specLabel:SetPoint("TOPLEFT", frame.allButton, "BOTTOMLEFT", 0, -14)
-    frame.specLabel:SetText(ns.L.SPEC_FILTER)
+    frame.classLabel = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    frame.classLabel:SetPoint("TOPLEFT", frame.allButton, "BOTTOMLEFT", 0, -14)
+    frame.classLabel:SetText(ns.L.CLASS_FILTER)
 
-    frame.specDropdown = self:EnsureSpecDropdown()
+    frame.classDropdown = self:EnsureClassDropdown()
 
     frame.settingsButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.settingsButton:SetText(ns.L.OPEN_SETTINGS)
@@ -556,51 +696,335 @@ function Panel:CreateHeader(frame)
     end)
 end
 
-function Panel:CreateHelper(frame)
-    frame.helper = CreateFrame("Frame", nil, frame, "InsetFrameTemplate3")
-    frame.helper:SetPoint("TOPLEFT", 0, -92)
-    frame.helper:SetHeight(118)
-    if frame.helper.SetClipsChildren then
-        frame.helper:SetClipsChildren(true)
+function Panel:ApplyListRowLayout(row)
+    local layout = self.listColumnLayout
+    if not row or not layout then
+        return
     end
 
-    frame.helper.title = frame.helper:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    frame.helper.title:SetPoint("TOPLEFT", 12, -10)
-    frame.helper.title:SetText(ns.L.CURRENT_KEY)
+    row:SetHeight(self.rowHeight)
+    row:SetWidth(layout.contentWidth)
 
-    frame.helper.status = frame.helper:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.helper.status:SetPoint("TOPLEFT", frame.helper.title, "BOTTOMLEFT", 0, -8)
-    frame.helper.status:SetJustifyH("LEFT")
+    row.rank:SetWidth(layout.rankWidth)
+    row.rank:SetJustifyH("CENTER")
+    row.rank:ClearAllPoints()
+    row.rank:SetPoint("LEFT", layout.xRank, 0)
 
-    frame.helper.counts = frame.helper:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    frame.helper.counts:SetPoint("TOPLEFT", frame.helper.status, "BOTTOMLEFT", 0, -8)
-    frame.helper.counts:SetJustifyH("LEFT")
+    row.selfMarker:ClearAllPoints()
+    row.selfMarker:SetPoint("LEFT", layout.xName, 0)
 
-    frame.helper.matchesLabel = frame.helper:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    frame.helper.matchesLabel:SetPoint("TOPLEFT", frame.helper.counts, "BOTTOMLEFT", 0, -8)
-    frame.helper.matchesLabel:SetText(ns.L.TOP_MATCHES)
+    row.name:SetWidth(math.max(80, layout.nameWidth - 16))
+    row.name:ClearAllPoints()
+    row.name:SetPoint("LEFT", row.selfMarker, "RIGHT", 4, 0)
 
-    frame.helper.matches = frame.helper:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    frame.helper.matches:SetPoint("TOPLEFT", frame.helper.matchesLabel, "BOTTOMLEFT", 0, -2)
-    frame.helper.matches:SetJustifyH("LEFT")
-    if frame.helper.matches.SetMaxLines then
-        frame.helper.matches:SetMaxLines(2)
+    row.roleIcon:ClearAllPoints()
+    row.roleIcon:SetPoint("LEFT", layout.xRole + math.floor((layout.roleWidth - 14) / 2), 0)
+
+    row.roleText:ClearAllPoints()
+    row.roleText:SetPoint("LEFT", layout.xRole + layout.roleWidth, 0)
+    row.roleText:SetWidth(1)
+
+    row.specIcon:ClearAllPoints()
+    row.specIcon:SetPoint("LEFT", layout.xSpec, 0)
+
+    row.spec:SetWidth(math.max(60, layout.specWidth - 18))
+    row.spec:ClearAllPoints()
+    row.spec:SetPoint("LEFT", row.specIcon, "RIGHT", 4, 0)
+
+    row.score:SetWidth(layout.scoreWidth)
+    row.score:SetJustifyH("RIGHT")
+    row.score:ClearAllPoints()
+    row.score:SetPoint("LEFT", layout.xScore, 0)
+
+    row.ilvl:SetWidth(layout.itemLevelWidth)
+    row.ilvl:SetJustifyH("RIGHT")
+    row.ilvl:ClearAllPoints()
+    row.ilvl:SetPoint("LEFT", layout.xItemLevel, 0)
+
+    row.best:SetWidth(layout.bestWidth)
+    row.best:SetJustifyH("RIGHT")
+    row.best:ClearAllPoints()
+    row.best:SetPoint("LEFT", layout.xBest, 0)
+
+    row.currentKey:ClearAllPoints()
+    row.currentKey:SetPoint("LEFT", layout.xCurrentKey, 0)
+    row.currentKey:SetSize(layout.currentKeyWidth, 14)
+
+    row.timed20:SetWidth(layout.timed20Width)
+    row.timed20:SetJustifyH("RIGHT")
+    row.timed20:ClearAllPoints()
+    row.timed20:SetPoint("LEFT", layout.xTimed20, 0)
+
+    row.timed15:SetWidth(layout.timed15Width)
+    row.timed15:SetJustifyH("RIGHT")
+    row.timed15:ClearAllPoints()
+    row.timed15:SetPoint("LEFT", layout.xTimed15, 0)
+
+    row.timed11_14:SetWidth(layout.timed11_14Width)
+    row.timed11_14:SetJustifyH("RIGHT")
+    row.timed11_14:ClearAllPoints()
+    row.timed11_14:SetPoint("LEFT", layout.xTimed11_14, 0)
+
+    row.timed9_10:SetWidth(layout.timed9_10Width)
+    row.timed9_10:SetJustifyH("RIGHT")
+    row.timed9_10:ClearAllPoints()
+    row.timed9_10:SetPoint("LEFT", layout.xTimed9_10, 0)
+
+    row.timed4_8:SetWidth(layout.timed4_8Width)
+    row.timed4_8:SetJustifyH("RIGHT")
+    row.timed4_8:ClearAllPoints()
+    row.timed4_8:SetPoint("LEFT", layout.xTimed4_8, 0)
+
+    row.timed2_3:SetWidth(layout.timed2_3Width)
+    row.timed2_3:SetJustifyH("RIGHT")
+    row.timed2_3:ClearAllPoints()
+    row.timed2_3:SetPoint("LEFT", layout.xTimed2_3, 0)
+end
+
+function Panel:InitializeListRow(row)
+    if not row or row.RaiderRanksInitialized then
+        return
     end
 
-    frame.helper.roles = {}
-    local previous = frame.helper.matches
-    for index = 1, 4 do
-        local roleText = frame.helper:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        roleText:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, index == 1 and -8 or -2)
-        roleText:SetJustifyH("LEFT")
-        frame.helper.roles[index] = roleText
-        previous = roleText
+    row.RaiderRanksInitialized = true
+    row:RegisterForClicks("LeftButtonUp")
+    row:SetScript("OnClick", function(self)
+        if not self.data or self.data.isHeader then
+            return
+        end
+        Panel.selectedFullName = self.data.fullName
+        Panel:RefreshRows()
+        Panel:RefreshDetail()
+    end)
+    row:SetScript("OnEnter", function(self)
+        if not self.data or self.data.isHeader then
+            return
+        end
+        if self.hover then
+            self.hover:Show()
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if not ns:ShowProfileTooltip(GameTooltip, self.data.name, self.data.realm) then
+            GameTooltip:SetText(ns:GetRecordDisplayName(self.data))
+        end
+    end)
+    row:SetScript("OnLeave", function(self)
+        if self.hover then
+            self.hover:Hide()
+        end
+        GameTooltip_Hide()
+    end)
+
+    row.background = row:CreateTexture(nil, "BACKGROUND")
+    row.background:SetAllPoints()
+    row.background:SetColorTexture(0, 0, 0, 0.1)
+
+    row.selfGlow = row:CreateTexture(nil, "ARTWORK")
+    row.selfGlow:SetAllPoints()
+    row.selfGlow:SetColorTexture(1, 0.82, 0.12, 0.055)
+    row.selfGlow:Hide()
+
+    row.hover = row:CreateTexture(nil, "ARTWORK")
+    row.hover:SetAllPoints()
+    row.hover:SetColorTexture(1, 1, 1, 0.035)
+    row.hover:Hide()
+
+    row.selection = row:CreateTexture(nil, "ARTWORK")
+    row.selection:SetAllPoints()
+    row.selection:SetColorTexture(0.22, 0.45, 0.8, 0.17)
+    row.selection:Hide()
+
+    row.separator = row:CreateTexture(nil, "BORDER")
+    row.separator:SetPoint("BOTTOMLEFT", 6, 0)
+    row.separator:SetPoint("BOTTOMRIGHT", -6, 0)
+    row.separator:SetHeight(1)
+    row.separator:SetColorTexture(1, 1, 1, 0.05)
+
+    row.selfAccent = row:CreateTexture(nil, "BORDER")
+    row.selfAccent:SetPoint("TOPLEFT", 0, 0)
+    row.selfAccent:SetPoint("BOTTOMLEFT", 0, 0)
+    row.selfAccent:SetWidth(3)
+    row.selfAccent:SetColorTexture(1, 0.82, 0.12, 0.85)
+    row.selfAccent:Hide()
+
+    row.rank = CreateInlineText(row, 24, "LEFT")
+    row.selfMarker = row:CreateTexture(nil, "ARTWORK")
+    row.selfMarker:SetSize(12, 12)
+    row.selfMarker:SetTexture(selfEntryTexture)
+    row.selfMarker:Hide()
+    row.name = CreateInlineText(row, 140, "LEFT")
+
+    row.roleIcon = row:CreateTexture(nil, "ARTWORK")
+    row.roleIcon:SetSize(14, 14)
+    row.roleText = CreateInlineText(row, 28, "LEFT")
+
+    row.specIcon = row:CreateTexture(nil, "ARTWORK")
+    row.specIcon:SetSize(14, 14)
+    row.spec = CreateInlineText(row, 68, "LEFT")
+
+    row.score = CreateInlineText(row, 48, "LEFT")
+    row.ilvl = CreateInlineText(row, 42, "LEFT")
+    row.best = CreateInlineText(row, 78, "LEFT")
+
+    row.currentKey = CreateFrame("Frame", nil, row)
+    row.currentKey.primary = row.currentKey:CreateTexture(nil, "ARTWORK")
+    row.currentKey.primary:SetPoint("RIGHT", 0, 0)
+    row.currentKey.primary:SetSize(14, 14)
+    row.currentKey.secondary = row.currentKey:CreateTexture(nil, "ARTWORK")
+    row.currentKey.secondary:SetPoint("RIGHT", row.currentKey.primary, "LEFT", 3, 0)
+    row.currentKey.secondary:SetSize(14, 14)
+    row.currentKey.tertiary = row.currentKey:CreateTexture(nil, "ARTWORK")
+    row.currentKey.tertiary:SetPoint("RIGHT", row.currentKey.secondary, "LEFT", 3, 0)
+    row.currentKey.tertiary:SetSize(14, 14)
+
+    row.timed20 = CreateInlineText(row, 30, "LEFT")
+    row.timed15 = CreateInlineText(row, 30, "LEFT")
+    row.timed11_14 = CreateInlineText(row, 30, "LEFT")
+    row.timed9_10 = CreateInlineText(row, 30, "LEFT")
+    row.timed4_8 = CreateInlineText(row, 30, "LEFT")
+    row.timed2_3 = CreateInlineText(row, 30, "LEFT")
+
+    self.frame.rows = self.frame.rows or {}
+    self.frame.rows[#self.frame.rows + 1] = row
+    self:ApplyListRowLayout(row)
+end
+
+function Panel:ApplyListRowData(row, data)
+    if not row then
+        return
     end
+
+    row.data = data
+    if not data then
+        row:Hide()
+        return
+    end
+
+    row:Show()
+    if row.hover then
+        row.hover:Hide()
+    end
+    row.selection:SetShown(data.fullName and data.fullName == self.selectedFullName)
+    row.separator:SetShown(not data.isHeader)
+
+    if data.isHeader then
+        row.selfGlow:Hide()
+        row.selfAccent:Hide()
+        row.selfMarker:Hide()
+        row.rank:SetText("")
+        row.name:SetText(("%s %s"):format(ns:GetRoleMarkup(data.roleBucket), data.label))
+        row.name:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+        HideTexture(row.roleIcon)
+        row.roleText:SetText("")
+        HideTexture(row.specIcon)
+        row.spec:SetText("")
+        row.score:SetText("")
+        row.ilvl:SetText("")
+        row.best:SetText("")
+        ApplyCurrentKeyStatusIndicator(row.currentKey, nil)
+        row.timed20:SetText("")
+        row.timed15:SetText("")
+        row.timed11_14:SetText("")
+        row.timed9_10:SetText("")
+        row.timed4_8:SetText("")
+        row.timed2_3:SetText("")
+        row.background:SetColorTexture(0.12, 0.12, 0.14, 0.96)
+        row.separator:Hide()
+        return
+    end
+
+    local stripeIndex = data.displayRank or data.displayIndex or 1
+    local isPlayerEntry = data.fullName and ns.playerFullName and data.fullName == ns.playerFullName
+    row.background:SetColorTexture(0, 0, 0, stripeIndex % 2 == 0 and 0.05 or 0.1)
+    row.selfGlow:SetShown(isPlayerEntry)
+    row.selfAccent:SetShown(isPlayerEntry)
+    row.selfMarker:SetShown(isPlayerEntry)
+    ApplyRankPresentation(row.rank, data.roleRank or data.displayRank or 0)
+    row.name:SetText(ns:GetRecordDisplayName(data))
+    row.name:SetTextColor(ns:GetClassColor(data.classFile):GetRGB())
+
+    row.roleIcon:SetAtlas(ns:GetRoleAtlas(data.roleBucket), true)
+    row.roleIcon:Show()
+    row.roleText:SetText("")
+
+    if data.specIcon then
+        row.specIcon:SetAtlas(nil)
+        row.specIcon:SetTexture(data.specIcon)
+    else
+        row.specIcon:SetTexture(nil)
+        row.specIcon:SetAtlas("classhall-icon-noglow", true)
+    end
+    row.specIcon:Show()
+    if data.specName then
+        row.spec:SetText(data.specName)
+        row.spec:SetTextColor((data.specIsStale and GRAY_FONT_COLOR or HIGHLIGHT_FONT_COLOR):GetRGB())
+        if row.specIcon.SetDesaturated then
+            row.specIcon:SetDesaturated(data.specIsStale)
+        end
+    else
+        row.spec:SetText(ns.L.UNKNOWN_SPEC_SHORT)
+        row.spec:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+        if row.specIcon.SetDesaturated then
+            row.specIcon:SetDesaturated(true)
+        end
+    end
+
+    row.score:SetText(data.currentScore > 0 and data.currentScore or "-")
+    ApplyScoreColor(row.score, data.currentScore)
+
+    if ns.Config:Get("showItemLevel") and data.equippedItemLevel then
+        row.ilvl:SetText(ns:GetItemLevelText(data.equippedItemLevel))
+        ApplyItemLevelPresentation(row.ilvl, data.equippedItemLevel, data.itemLevelIsStale)
+    else
+        row.ilvl:SetText("-")
+        row.ilvl:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+    end
+
+    row.best:SetText(BuildBestRunText(data))
+    ApplyCurrentKeyStatusIndicator(row.currentKey, data.currentKeyStatus)
+    row.timed20:SetText(data.timed20 > 0 and data.timed20 or "-")
+    row.timed15:SetText(data.timed15 > 0 and data.timed15 or "-")
+    row.timed11_14:SetText(data.timed11_14 > 0 and data.timed11_14 or "-")
+    row.timed9_10:SetText(data.timed9_10 > 0 and data.timed9_10 or "-")
+    row.timed4_8:SetText(data.timed4_8 > 0 and data.timed4_8 or "-")
+    row.timed2_3:SetText(data.timed2_3 > 0 and data.timed2_3 or "-")
+    ApplyRunCountPresentation(row.timed20, data.timed20)
+    ApplyRunCountPresentation(row.timed15, data.timed15)
+    ApplyRunCountPresentation(row.timed11_14, data.timed11_14)
+    ApplyRunCountPresentation(row.timed9_10, data.timed9_10)
+    ApplyRunCountPresentation(row.timed4_8, data.timed4_8)
+    ApplyRunCountPresentation(row.timed2_3, data.timed2_3)
+
+    ns.Inspect:QueueRecord(data)
+end
+
+function Panel:PrepareDisplayRows(rows)
+    rows = rows or {}
+
+    local displayRank = 0
+    local roleRank = 0
+    for index = 1, #rows do
+        local data = rows[index]
+        data.displayIndex = index
+
+        if data.isHeader then
+            data.displayRank = nil
+            data.roleRank = nil
+            roleRank = 0
+        else
+            displayRank = displayRank + 1
+            roleRank = roleRank + 1
+            data.displayRank = displayRank
+            data.roleRank = roleRank
+        end
+    end
+
+    return rows
 end
 
 function Panel:CreateList(frame)
     frame.list = CreateFrame("Frame", nil, frame, "InsetFrameTemplate3")
-    frame.list:SetPoint("TOPLEFT", frame.helper, "BOTTOMLEFT", 0, -10)
+    frame.list:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -92)
     frame.list:SetPoint("BOTTOMLEFT", 0, 0)
     if frame.list.SetClipsChildren then
         frame.list:SetClipsChildren(true)
@@ -608,8 +1032,8 @@ function Panel:CreateList(frame)
 
     frame.list.header = CreateFrame("Frame", nil, frame.list)
     frame.list.header:SetPoint("TOPLEFT", 8, -8)
-    frame.list.header:SetPoint("TOPRIGHT", -28, -8)
-    frame.list.header:SetHeight(20)
+    frame.list.header:SetPoint("TOPRIGHT", -34, -8)
+    frame.list.header:SetHeight(24)
 
     local headerColumns = {
         { key = "rank", text = ns.L.RANK, width = 24, x = 0 },
@@ -619,224 +1043,92 @@ function Panel:CreateList(frame)
         { key = "score", text = ns.L.SCORE, width = 48, x = 314 },
         { key = "ilvl", text = ns.L.ITEM_LEVEL, width = 42, x = 368 },
         { key = "best", text = ns.L.BEST, width = 78, x = 416 },
-        { key = "timed20", text = ns.L.TIMED_20, width = 30, x = 542 },
-        { key = "timed15", text = ns.L.TIMED_15, width = 30, x = 576 },
-        { key = "timed10", text = ns.L.TIMED_10, width = 30, x = 610 },
-        { key = "timed5", text = ns.L.TIMED_5, width = 30, x = 644 }
+        { key = "timed20", text = ns.L.TIMED_20, width = 42, x = 542 },
+        { key = "timed15", text = ns.L.TIMED_15, width = 34, x = 580 },
+        { key = "timed11_14", text = ns.L.TIMED_11_14, width = 40, x = 618 },
+        { key = "timed9_10", text = ns.L.TIMED_9_10, width = 40, x = 662 },
+        { key = "timed4_8", text = ns.L.TIMED_4_8, width = 40, x = 706 },
+        { key = "timed2_3", text = ns.L.TIMED_2_3, width = 40, x = 750 }
     }
 
     for index = 1, #headerColumns do
         local info = headerColumns[index]
-        local fontString = frame.list.header:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-        fontString:SetPoint("LEFT", info.x, 0)
-        fontString:SetWidth(info.width)
-        fontString:SetJustifyH("LEFT")
-        fontString:SetText(info.text)
-        frame.list.header[info.key] = fontString
+        local cell = CreateNativeHeaderCell(frame.list.header, info.text)
+        cell:SetPoint("LEFT", info.x, 0)
+        cell:SetWidth(info.width)
+        frame.list.header[info.key] = cell
+        if info.key:match("^timed") then
+            ConfigureTimedBucketHeaderCell(cell, info.key)
+        end
     end
 
-    frame.list.header.currentKey = CreateFrame("Button", nil, frame.list.header)
-    frame.list.header.currentKey:SetPoint("LEFT", 500, 0)
-    frame.list.header.currentKey:SetSize(34, 18)
+    frame.list.header.currentKeyCell = CreateNativeHeaderCell(frame.list.header, "")
+    frame.list.header.currentKeyCell:SetPoint("LEFT", 500, 0)
+    frame.list.header.currentKeyCell:SetWidth(54)
+    frame.list.header.currentKey = CreateFrame("Button", nil, frame.list.header.currentKeyCell)
+    frame.list.header.currentKey:SetPoint("LEFT", 6, 0)
+    frame.list.header.currentKey:SetSize(44, 18)
     frame.list.header.currentKey.icon = frame.list.header.currentKey:CreateTexture(nil, "ARTWORK")
     frame.list.header.currentKey.icon:SetPoint("LEFT", 0, 0)
     frame.list.header.currentKey.icon:SetSize(18, 18)
     frame.list.header.currentKey.level = frame.list.header.currentKey:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     frame.list.header.currentKey.level:SetPoint("LEFT", frame.list.header.currentKey.icon, "RIGHT", 2, 0)
+    frame.list.header.currentKey.level:SetWidth(20)
     frame.list.header.currentKey.level:SetJustifyH("LEFT")
     frame.list.header.currentKey:SetScript("OnEnter", function(self)
         ShowCurrentKeyHeaderTooltip(self)
     end)
     frame.list.header.currentKey:SetScript("OnLeave", GameTooltip_Hide)
 
-    CreateDivider(frame.list, frame.list.header, -2)
+    CreateDivider(frame.list, frame.list.header, -1)
 
-    frame.list.emptyText = frame.list:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.list.emptyText:SetPoint("CENTER", 0, -10)
+    frame.list.body = CreateFrame("Frame", nil, frame.list)
+    frame.list.body:SetPoint("TOPLEFT", frame.list, "TOPLEFT", 8, -34)
+    frame.list.body:SetPoint("BOTTOMRIGHT", frame.list, "BOTTOMRIGHT", -8, 8)
+    if frame.list.body.SetClipsChildren then
+        frame.list.body:SetClipsChildren(true)
+    end
+
+    frame.list.emptyText = frame.list.body:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    frame.list.emptyText:SetPoint("CENTER", frame.list.body, "CENTER", 0, 0)
     frame.list.emptyText:SetText(ns.L.NO_DATA)
     frame.list.emptyText:Hide()
 
-    frame.scrollFrame = CreateFrame("ScrollFrame", addonName .. "PanelScrollFrame", frame.list, "FauxScrollFrameTemplate")
-    frame.scrollFrame:SetPoint("TOPLEFT", frame.list.header, "BOTTOMLEFT", -2, -2)
-    frame.scrollFrame:SetPoint("BOTTOMRIGHT", -24, 8)
-    frame.scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
-        FauxScrollFrame_OnVerticalScroll(self, offset, Panel.rowHeight, function()
-            Panel:RefreshRows()
-        end)
+    frame.scrollBox = CreateFrame("Frame", nil, frame.list.body, "WowScrollBoxList")
+    frame.scrollBox:SetPoint("TOPLEFT", frame.list.body, "TOPLEFT", 0, 0)
+    frame.scrollBox:SetPoint("BOTTOMRIGHT", frame.list.body, "BOTTOMRIGHT", -36, 0)
+
+    frame.scrollBar = CreateFrame("EventFrame", nil, frame.list.body, "MinimalScrollBar")
+    frame.scrollBar:SetPoint("TOPRIGHT", frame.list.body, "TOPRIGHT", -2, 0)
+    frame.scrollBar:SetPoint("BOTTOMRIGHT", frame.list.body, "BOTTOMRIGHT", -2, 0)
+
+    if frame.scrollBox.SetInterpolateScroll then
+        frame.scrollBox:SetInterpolateScroll(true)
+    end
+    if frame.scrollBar.SetInterpolateScroll then
+        frame.scrollBar:SetInterpolateScroll(true)
+    end
+
+    local view = CreateScrollBoxListLinearView()
+    view:SetElementExtent(self.rowHeight)
+    if view.SetPadding then
+        view:SetPadding(0, 0, 0, 0, 0)
+    end
+    view:SetElementInitializer("Button", function(button, elementData)
+        Panel:InitializeListRow(button)
+        Panel:ApplyListRowLayout(button)
+        Panel:ApplyListRowData(button, elementData)
     end)
 
+    ScrollUtil.InitScrollBoxListWithScrollBar(frame.scrollBox, frame.scrollBar, view)
+    frame.listDataProvider = CreateDataProvider()
+    frame.scrollBox:SetDataProvider(frame.listDataProvider)
     frame.rows = {}
-    for index = 1, self.rowCount do
-        local row = CreateFrame("Button", nil, frame.list)
-        row:SetPoint("TOPLEFT", frame.list.header, "BOTTOMLEFT", 0, -4 - ((index - 1) * self.rowHeight))
-        row:SetPoint("RIGHT", frame.list, "RIGHT", -28, 0)
-        row:SetHeight(self.rowHeight)
-        row:RegisterForClicks("LeftButtonUp")
-        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-        row:SetScript("OnClick", function(self)
-            if not self.data or self.data.isHeader then
-                return
-            end
-            Panel.selectedFullName = self.data.fullName
-            Panel:RefreshRows()
-            Panel:RefreshDetail()
-        end)
-        row:SetScript("OnEnter", function(self)
-            if not self.data or self.data.isHeader then
-                return
-            end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if not ns:ShowProfileTooltip(GameTooltip, self.data.name, self.data.realm) then
-                GameTooltip:SetText(ns:GetRecordDisplayName(self.data))
-            end
-        end)
-        row:SetScript("OnLeave", GameTooltip_Hide)
-
-        row.background = row:CreateTexture(nil, "BACKGROUND")
-        row.background:SetAllPoints()
-        row.background:SetColorTexture(0, 0, 0, index % 2 == 0 and 0.05 or 0.12)
-
-        row.selection = row:CreateTexture(nil, "ARTWORK")
-        row.selection:SetAllPoints()
-        row.selection:SetColorTexture(0.15, 0.35, 0.75, 0.18)
-        row.selection:Hide()
-
-        row.rank = CreateInlineText(row, 24, "LEFT")
-        row.rank:SetPoint("LEFT", 0, 0)
-        row.name = CreateInlineText(row, 140, "LEFT")
-        row.name:SetPoint("LEFT", 30, 0)
-
-        row.roleIcon = row:CreateTexture(nil, "ARTWORK")
-        row.roleIcon:SetSize(14, 14)
-        row.roleIcon:SetPoint("LEFT", 174, 0)
-        row.roleText = CreateInlineText(row, 28, "LEFT")
-        row.roleText:SetPoint("LEFT", row.roleIcon, "RIGHT", 3, 0)
-
-        row.specIcon = row:CreateTexture(nil, "ARTWORK")
-        row.specIcon:SetSize(14, 14)
-        row.specIcon:SetPoint("LEFT", 226, 0)
-        row.spec = CreateInlineText(row, 68, "LEFT")
-        row.spec:SetPoint("LEFT", row.specIcon, "RIGHT", 3, 0)
-
-        row.score = CreateInlineText(row, 48, "LEFT")
-        row.score:SetPoint("LEFT", 314, 0)
-        row.ilvl = CreateInlineText(row, 42, "LEFT")
-        row.ilvl:SetPoint("LEFT", 368, 0)
-        row.best = CreateInlineText(row, 78, "LEFT")
-        row.best:SetPoint("LEFT", 416, 0)
-        row.currentKey = CreateFrame("Frame", nil, row)
-        row.currentKey:SetPoint("LEFT", 500, 0)
-        row.currentKey:SetSize(34, 14)
-        row.currentKey.primary = row.currentKey:CreateTexture(nil, "ARTWORK")
-        row.currentKey.primary:SetPoint("LEFT", 0, 0)
-        row.currentKey.primary:SetSize(14, 14)
-        row.currentKey.secondary = row.currentKey:CreateTexture(nil, "ARTWORK")
-        row.currentKey.secondary:SetPoint("LEFT", row.currentKey.primary, "RIGHT", -3, 0)
-        row.currentKey.secondary:SetSize(14, 14)
-        row.timed20 = CreateInlineText(row, 30, "LEFT")
-        row.timed20:SetPoint("LEFT", 542, 0)
-        row.timed15 = CreateInlineText(row, 30, "LEFT")
-        row.timed15:SetPoint("LEFT", 576, 0)
-        row.timed10 = CreateInlineText(row, 30, "LEFT")
-        row.timed10:SetPoint("LEFT", 610, 0)
-        row.timed5 = CreateInlineText(row, 30, "LEFT")
-        row.timed5:SetPoint("LEFT", 644, 0)
-
-        frame.rows[index] = row
-    end
 end
 
 function Panel:CreateDetail(frame)
-    frame.detail = CreateFrame("Frame", nil, frame, "InsetFrameTemplate3")
-    frame.detail:SetPoint("TOPRIGHT", 0, -92)
-    frame.detail:SetPoint("BOTTOMRIGHT", 0, 0)
-    frame.detail:SetWidth(312)
-    if frame.detail.SetClipsChildren then
-        frame.detail:SetClipsChildren(true)
-    end
-
-    frame.detail.name = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    frame.detail.name:SetPoint("TOPLEFT", 12, -12)
-    frame.detail.name:SetJustifyH("LEFT")
-    frame.detail.name:SetWidth(284)
-
-    frame.detail.source = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    frame.detail.source:SetPoint("TOPLEFT", frame.detail.name, "BOTTOMLEFT", 0, -6)
-    frame.detail.source:SetJustifyH("LEFT")
-    frame.detail.source:SetWidth(284)
-
-    frame.detail.role = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.role:SetPoint("TOPLEFT", frame.detail.source, "BOTTOMLEFT", 0, -10)
-    frame.detail.role:SetJustifyH("LEFT")
-    frame.detail.role:SetWidth(284)
-
-    frame.detail.specIcon = frame.detail:CreateTexture(nil, "ARTWORK")
-    frame.detail.specIcon:SetSize(16, 16)
-    frame.detail.specIcon:SetPoint("TOPLEFT", frame.detail.role, "BOTTOMLEFT", 0, -10)
-
-    frame.detail.spec = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.spec:SetPoint("LEFT", frame.detail.specIcon, "RIGHT", 5, 0)
-    frame.detail.spec:SetJustifyH("LEFT")
-    frame.detail.spec:SetWidth(262)
-
-    frame.detail.score = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.score:SetPoint("TOPLEFT", frame.detail.spec, "BOTTOMLEFT", -21, -10)
-    frame.detail.score:SetJustifyH("LEFT")
-    frame.detail.score:SetWidth(284)
-
-    frame.detail.mainScore = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    frame.detail.mainScore:SetPoint("TOPLEFT", frame.detail.score, "BOTTOMLEFT", 0, -6)
-    frame.detail.mainScore:SetJustifyH("LEFT")
-    frame.detail.mainScore:SetWidth(284)
-
-    frame.detail.itemLevel = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.itemLevel:SetPoint("TOPLEFT", frame.detail.mainScore, "BOTTOMLEFT", 0, -8)
-    frame.detail.itemLevel:SetJustifyH("LEFT")
-    frame.detail.itemLevel:SetWidth(284)
-
-    frame.detail.profileState = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.profileState:SetPoint("TOPLEFT", frame.detail.itemLevel, "BOTTOMLEFT", 0, -8)
-    frame.detail.profileState:SetJustifyH("LEFT")
-    frame.detail.profileState:SetWidth(284)
-
-    frame.detail.bestRun = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.bestRun:SetPoint("TOPLEFT", frame.detail.profileState, "BOTTOMLEFT", 0, -8)
-    frame.detail.bestRun:SetJustifyH("LEFT")
-    frame.detail.bestRun:SetWidth(284)
-
-    frame.detail.timedRuns = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    frame.detail.timedRuns:SetPoint("TOPLEFT", frame.detail.bestRun, "BOTTOMLEFT", 0, -8)
-    frame.detail.timedRuns:SetJustifyH("LEFT")
-    frame.detail.timedRuns:SetWidth(284)
-
-    frame.detail.raidHeader = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    frame.detail.raidHeader:SetPoint("TOPLEFT", frame.detail.timedRuns, "BOTTOMLEFT", 0, -12)
-    frame.detail.raidHeader:SetText(ns.L.DETAIL_RAID_CONTEXT)
-
-    frame.detail.raidRows = {}
-    local previous = frame.detail.raidHeader
-    for index = 1, 4 do
-        local row = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        row:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, index == 1 and -4 or -2)
-        row:SetJustifyH("LEFT")
-        row:SetWidth(284)
-        frame.detail.raidRows[index] = row
-        previous = row
-    end
-
-    frame.detail.dungeonHeader = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    frame.detail.dungeonHeader:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -12)
-    frame.detail.dungeonHeader:SetText(ns.L.DETAIL_DUNGEONS)
-
-    frame.detail.dungeonRows = {}
-    previous = frame.detail.dungeonHeader
-    for index = 1, 8 do
-        local row = frame.detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        row:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, index == 1 and -4 or -2)
-        row:SetJustifyH("LEFT")
-        row:SetWidth(284)
-        frame.detail.dungeonRows[index] = row
-        previous = row
+    if ns.DetailPanel then
+        return ns.DetailPanel:Create(frame)
     end
 end
 
@@ -975,7 +1267,7 @@ function Panel:EnsureCreated()
     self:CreateDetail(frame)
     self:CreateList(frame)
 
-    self:BuildSpecDropdown()
+    self:BuildClassDropdown()
     self:HookPVEFrame()
     self:ApplyLayout()
     return true
@@ -1027,7 +1319,7 @@ function Panel:ApplyLayout()
 
     local toggleBottom = LayoutFlowRow(
         frame,
-        { frame.onlineOnly, frame.showUnscored, frame.groupByRole },
+        { frame.onlineOnly, frame.groupByRole },
         leftInset,
         width - rightInset,
         sourceBottom - 8,
@@ -1035,13 +1327,13 @@ function Panel:ApplyLayout()
         6
     )
 
-    frame.specLabel:ClearAllPoints()
-    frame.specLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", leftInset, toggleBottom - 14)
+    frame.classLabel:ClearAllPoints()
+    frame.classLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", leftInset, toggleBottom - 14)
 
-    local dropdown = self:EnsureSpecDropdown()
+    local dropdown = self:EnsureClassDropdown()
     if dropdown then
         dropdown:ClearAllPoints()
-        dropdown:SetPoint("TOPLEFT", frame.specLabel, "BOTTOMLEFT", -16, -2)
+        dropdown:SetPoint("TOPLEFT", frame.classLabel, "BOTTOMLEFT", -16, -2)
     end
 
     local specBottom = toggleBottom - 44
@@ -1062,24 +1354,8 @@ function Panel:ApplyLayout()
     frame.list:SetPoint("BOTTOMLEFT", 0, 0)
     frame.list:SetPoint("BOTTOMRIGHT", frame.detail, "BOTTOMLEFT", -spacing, 0)
 
-    local detailTextWidth = math.max(220, detailWidth - 28)
-    frame.detail.name:SetWidth(detailTextWidth)
-    frame.detail.source:SetWidth(detailTextWidth)
-    frame.detail.role:SetWidth(detailTextWidth)
-    frame.detail.spec:SetWidth(math.max(180, detailTextWidth - 22))
-    frame.detail.score:SetWidth(detailTextWidth)
-    frame.detail.mainScore:SetWidth(detailTextWidth)
-    frame.detail.itemLevel:SetWidth(detailTextWidth)
-    frame.detail.profileState:SetWidth(detailTextWidth)
-    frame.detail.bestRun:SetWidth(detailTextWidth)
-    frame.detail.timedRuns:SetWidth(detailTextWidth)
-
-    for index = 1, #frame.detail.raidRows do
-        frame.detail.raidRows[index]:SetWidth(detailTextWidth)
-    end
-
-    for index = 1, #frame.detail.dungeonRows do
-        frame.detail.dungeonRows[index]:SetWidth(detailTextWidth)
+    if ns.DetailPanel then
+        ns.DetailPanel:ApplyLayout(frame, detailWidth)
     end
 
     self:ApplyListColumns()
@@ -1091,20 +1367,30 @@ function Panel:ApplyListColumns()
         return
     end
 
-    local contentWidth = math.max(620, frame.list.header:GetWidth())
-    local gap = 8
-    local rankWidth = 54
-    local roleWidth = 36
-    local scoreWidth = 50
-    local itemLevelWidth = 44
-    local bestWidth = 56
-    local currentKeyWidth = 34
-    local timedWidth = 30
-    local fixedWidths = rankWidth + roleWidth + scoreWidth + itemLevelWidth + bestWidth + currentKeyWidth + timedWidth + timedWidth + timedWidth + timedWidth
-    local fixedGaps = gap * 11
-    local remaining = math.max(240, contentWidth - fixedWidths - fixedGaps)
-    local nameWidth = math.floor(math.max(145, remaining * 0.52))
-    local specWidth = math.max(95, remaining - nameWidth)
+    local scrollContentWidth = frame.scrollBox and frame.scrollBox.GetWidth and frame.scrollBox:GetWidth() or frame.list.header:GetWidth()
+    local contentWidth = math.max(620, math.floor(math.min(frame.list.header:GetWidth(), scrollContentWidth)))
+    local gap = 4
+    local rankWidth = 48
+    local roleWidth = 44
+    local scoreWidth = 46
+    local itemLevelWidth = 38
+    local bestWidth = 50
+    local currentKeyWidth = 50
+    local timed20Width = 42
+    local timed15Width = 34
+    local timed11_14Width = 40
+    local timed9_10Width = 40
+    local timed4_8Width = 40
+    local timed2_3Width = 40
+    local fixedWidths = rankWidth + roleWidth + scoreWidth + itemLevelWidth + bestWidth + currentKeyWidth + timed20Width + timed15Width + timed11_14Width + timed9_10Width + timed4_8Width + timed2_3Width
+    local fixedGaps = gap * 13
+    local remaining = math.max(128, contentWidth - fixedWidths - fixedGaps)
+    local specWidth = math.max(66, math.min(92, math.floor(remaining * 0.34)))
+    local nameWidth = remaining - specWidth
+    if nameWidth < 96 then
+        specWidth = math.max(60, specWidth - (96 - nameWidth))
+        nameWidth = remaining - specWidth
+    end
 
     local xRank = 0
     local xName = xRank + rankWidth + gap
@@ -1115,9 +1401,44 @@ function Panel:ApplyListColumns()
     local xBest = xItemLevel + itemLevelWidth + gap
     local xCurrentKey = xBest + bestWidth + gap
     local xTimed20 = xCurrentKey + currentKeyWidth + gap
-    local xTimed15 = xTimed20 + timedWidth + gap
-    local xTimed10 = xTimed15 + timedWidth + gap
-    local xTimed5 = xTimed10 + timedWidth + gap
+    local xTimed15 = xTimed20 + timed20Width + gap
+    local xTimed11_14 = xTimed15 + timed15Width + gap
+    local xTimed9_10 = xTimed11_14 + timed11_14Width + gap
+    local xTimed4_8 = xTimed9_10 + timed9_10Width + gap
+    local xTimed2_3 = xTimed4_8 + timed4_8Width + gap
+
+    self.listColumnLayout = {
+        contentWidth = contentWidth,
+        rankWidth = rankWidth,
+        nameWidth = nameWidth,
+        roleWidth = roleWidth,
+        specWidth = specWidth,
+        scoreWidth = scoreWidth,
+        itemLevelWidth = itemLevelWidth,
+        bestWidth = bestWidth,
+        currentKeyWidth = currentKeyWidth,
+        timedWidth = timed15Width,
+        timed20Width = timed20Width,
+        timed15Width = timed15Width,
+        timed11_14Width = timed11_14Width,
+        timed9_10Width = timed9_10Width,
+        timed4_8Width = timed4_8Width,
+        timed2_3Width = timed2_3Width,
+        xRank = xRank,
+        xName = xName,
+        xRole = xRole,
+        xSpec = xSpec,
+        xScore = xScore,
+        xItemLevel = xItemLevel,
+        xBest = xBest,
+        xCurrentKey = xCurrentKey,
+        xTimed20 = xTimed20,
+        xTimed15 = xTimed15,
+        xTimed11_14 = xTimed11_14,
+        xTimed9_10 = xTimed9_10,
+        xTimed4_8 = xTimed4_8,
+        xTimed2_3 = xTimed2_3
+    }
 
     frame.list.header.rank:ClearAllPoints()
     frame.list.header.rank:SetPoint("LEFT", xRank, 0)
@@ -1147,89 +1468,40 @@ function Panel:ApplyListColumns()
     frame.list.header.best:SetPoint("LEFT", xBest, 0)
     frame.list.header.best:SetWidth(bestWidth)
 
+    frame.list.header.currentKeyCell:ClearAllPoints()
+    frame.list.header.currentKeyCell:SetPoint("LEFT", xCurrentKey, 0)
+    frame.list.header.currentKeyCell:SetWidth(currentKeyWidth)
+
     frame.list.header.currentKey:ClearAllPoints()
-    frame.list.header.currentKey:SetPoint("LEFT", xCurrentKey, 0)
-    frame.list.header.currentKey:SetSize(currentKeyWidth, 18)
+    frame.list.header.currentKey:SetPoint("LEFT", frame.list.header.currentKeyCell, "LEFT", 6, 0)
+    frame.list.header.currentKey:SetSize(currentKeyWidth - 10, 18)
 
     frame.list.header.timed20:ClearAllPoints()
     frame.list.header.timed20:SetPoint("LEFT", xTimed20, 0)
-    frame.list.header.timed20:SetWidth(timedWidth)
+    frame.list.header.timed20:SetWidth(timed20Width)
 
     frame.list.header.timed15:ClearAllPoints()
     frame.list.header.timed15:SetPoint("LEFT", xTimed15, 0)
-    frame.list.header.timed15:SetWidth(timedWidth)
+    frame.list.header.timed15:SetWidth(timed15Width)
 
-    frame.list.header.timed10:ClearAllPoints()
-    frame.list.header.timed10:SetPoint("LEFT", xTimed10, 0)
-    frame.list.header.timed10:SetWidth(timedWidth)
+    frame.list.header.timed11_14:ClearAllPoints()
+    frame.list.header.timed11_14:SetPoint("LEFT", xTimed11_14, 0)
+    frame.list.header.timed11_14:SetWidth(timed11_14Width)
 
-    frame.list.header.timed5:ClearAllPoints()
-    frame.list.header.timed5:SetPoint("LEFT", xTimed5, 0)
-    frame.list.header.timed5:SetWidth(timedWidth)
+    frame.list.header.timed9_10:ClearAllPoints()
+    frame.list.header.timed9_10:SetPoint("LEFT", xTimed9_10, 0)
+    frame.list.header.timed9_10:SetWidth(timed9_10Width)
+
+    frame.list.header.timed4_8:ClearAllPoints()
+    frame.list.header.timed4_8:SetPoint("LEFT", xTimed4_8, 0)
+    frame.list.header.timed4_8:SetWidth(timed4_8Width)
+
+    frame.list.header.timed2_3:ClearAllPoints()
+    frame.list.header.timed2_3:SetPoint("LEFT", xTimed2_3, 0)
+    frame.list.header.timed2_3:SetWidth(timed2_3Width)
 
     for index = 1, #frame.rows do
-        local row = frame.rows[index]
-        row.rank:SetWidth(rankWidth)
-        row.rank:SetJustifyH("CENTER")
-        row.rank:ClearAllPoints()
-        row.rank:SetPoint("LEFT", xRank, 0)
-
-        row.name:SetWidth(nameWidth)
-        row.name:ClearAllPoints()
-        row.name:SetPoint("LEFT", xName, 0)
-
-        row.roleIcon:ClearAllPoints()
-        row.roleIcon:SetPoint("LEFT", xRole + math.floor((roleWidth - 14) / 2), 0)
-
-        row.roleText:ClearAllPoints()
-        row.roleText:SetPoint("LEFT", xRole + roleWidth, 0)
-        row.roleText:SetWidth(1)
-
-        row.specIcon:ClearAllPoints()
-        row.specIcon:SetPoint("LEFT", xSpec, 0)
-
-        row.spec:SetWidth(math.max(60, specWidth - 18))
-        row.spec:ClearAllPoints()
-        row.spec:SetPoint("LEFT", row.specIcon, "RIGHT", 4, 0)
-
-        row.score:SetWidth(scoreWidth)
-        row.score:SetJustifyH("RIGHT")
-        row.score:ClearAllPoints()
-        row.score:SetPoint("LEFT", xScore, 0)
-
-        row.ilvl:SetWidth(itemLevelWidth)
-        row.ilvl:SetJustifyH("RIGHT")
-        row.ilvl:ClearAllPoints()
-        row.ilvl:SetPoint("LEFT", xItemLevel, 0)
-
-        row.best:SetWidth(bestWidth)
-        row.best:SetJustifyH("RIGHT")
-        row.best:ClearAllPoints()
-        row.best:SetPoint("LEFT", xBest, 0)
-
-        row.currentKey:ClearAllPoints()
-        row.currentKey:SetPoint("LEFT", xCurrentKey, 0)
-        row.currentKey:SetSize(currentKeyWidth, 14)
-
-        row.timed20:SetWidth(timedWidth)
-        row.timed20:SetJustifyH("RIGHT")
-        row.timed20:ClearAllPoints()
-        row.timed20:SetPoint("LEFT", xTimed20, 0)
-
-        row.timed15:SetWidth(timedWidth)
-        row.timed15:SetJustifyH("RIGHT")
-        row.timed15:ClearAllPoints()
-        row.timed15:SetPoint("LEFT", xTimed15, 0)
-
-        row.timed10:SetWidth(timedWidth)
-        row.timed10:SetJustifyH("RIGHT")
-        row.timed10:ClearAllPoints()
-        row.timed10:SetPoint("LEFT", xTimed10, 0)
-
-        row.timed5:SetWidth(timedWidth)
-        row.timed5:SetJustifyH("RIGHT")
-        row.timed5:ClearAllPoints()
-        row.timed5:SetPoint("LEFT", xTimed5, 0)
+        self:ApplyListRowLayout(frame.rows[index])
     end
 end
 
@@ -1330,86 +1602,25 @@ function Panel:RefreshHeaderControls()
     end
 
     frame.onlineOnly:SetChecked(not ns.Config:Get("showOffline"))
-    frame.showUnscored:SetChecked(ns.Config:Get("showUnscored"))
     frame.groupByRole:SetChecked(ns.Config:Get("groupByRole"))
     UpdateCurrentKeyHeader(frame.list and frame.list.header and frame.list.header.currentKey)
 
-    self:SetSpecDropdownText(ns.L.ALL_SPECS)
-    local specFilter = ns.Config:Get("specFilter")
-    if specFilter ~= "all" then
-        local record = ns.Data.specCatalog[tonumber(specFilter)]
-        if record then
-            self:SetSpecDropdownText(record.specName)
-        end
-    end
-end
-
-function Panel:RefreshHelper()
-    local frame = self.frame
-    if not frame or not frame.helper then
-        return
-    end
-
-    local helper = frame.helper
-    if not ns.Config:Get("showCurrentKeyHelper") then
-        helper:Hide()
-        self:ApplyLayout()
-        return
-    end
-
-    helper:Show()
-    self:ApplyLayout()
-
-    local context = ns.Data:GetCurrentKeyContext()
-    if not context.mapID or not context.level then
-        helper.status:SetText(ns.L.NO_CURRENT_KEY)
-        helper.counts:SetText("")
-        helper.matches:SetText("")
-        for index = 1, #helper.roles do
-            helper.roles[index]:SetText("")
-        end
-        return
-    end
-
-    helper.status:SetText(("%s (%d)"):format(context.mapName or ns.L.CURRENT_KEY, context.level))
-    helper.counts:SetText(("%s: %d    %s    %s    %s    %s"):format(
-        ns.L.QUALIFIED,
-        context.qualifiedCount,
-        ns.L.HELPER_ROLE_COUNT:format(ns:GetRoleMarkup("tank"), context.qualifiedByRole.tank or 0),
-        ns.L.HELPER_ROLE_COUNT:format(ns:GetRoleMarkup("healer"), context.qualifiedByRole.healer or 0),
-        ns.L.HELPER_ROLE_COUNT:format(ns:GetRoleMarkup("dps"), context.qualifiedByRole.dps or 0),
-        ns.L.HELPER_ROLE_COUNT:format(ns:GetRoleMarkup("unknown"), context.qualifiedByRole.unknown or 0)
-    ))
-
-    if context.qualifiedCount == 0 then
-        helper.matches:SetText(ns.L.NO_QUALIFIED_MATCHES)
-    else
-        local names = {}
-        local maxMatches = math.min(3, #context.qualifiedMembers)
-        for index = 1, maxMatches do
-            local record = context.qualifiedMembers[index]
-            names[#names + 1] = ("%s %s"):format(ns:GetRoleMarkup(record.roleBucket), record.name)
-        end
-        if #context.qualifiedMembers > maxMatches then
-            names[#names + 1] = "..."
-        end
-        helper.matches:SetText(table.concat(names, ", "))
-    end
-
-    local orderedRoles = { "tank", "healer", "dps", "unknown" }
-    for index = 1, #orderedRoles do
-        local role = orderedRoles[index]
-        local best = context.bestByRole[role]
-        if best then
-            helper.roles[index]:SetText(("%s %s"):format(ns:GetRoleMarkup(role), ns:GetRecordDisplayName(best)))
-        else
-            helper.roles[index]:SetText(("%s -"):format(ns:GetRoleMarkup(role)))
+    self:SetClassDropdownText(ns.L.ALL_CLASSES)
+    local classFilter = ns.Config:Get("classFilter")
+    if classFilter ~= "all" then
+        local options = ns.Data:GetClassOptions()
+        for index = 1, #options do
+            local classInfo = options[index]
+            if classInfo.classFile == classFilter then
+                self:SetClassDropdownText(classInfo.className)
+                break
+            end
         end
     end
 end
 
 function Panel:RefreshRows()
-    if not self.frame or not self.frame.scrollFrame then
+    if not self.frame or not self.frame.scrollBox or not self.frame.listDataProvider then
         return
     end
 
@@ -1419,216 +1630,23 @@ function Panel:RefreshRows()
         self.frame.list.emptyText:SetText(ns:IsRaiderIOAvailable() and ns.L.NO_DATA or ns.L.RAIDERIO_MISSING)
     end
 
-    local offset = FauxScrollFrame_GetOffset(self.frame.scrollFrame)
-    FauxScrollFrame_Update(self.frame.scrollFrame, totalRows, self.rowCount, self.rowHeight)
-
-    local rank = 0
-    local roleRank = 0
-    for displayIndex = 1, offset do
-        local hiddenRow = self.displayRows[displayIndex]
-        if hiddenRow and hiddenRow.isHeader then
-            roleRank = 0
-        elseif hiddenRow and not hiddenRow.isHeader then
-            rank = rank + 1
-            roleRank = roleRank + 1
-        end
-    end
-
-    for rowIndex = 1, self.rowCount do
-        local row = self.frame.rows[rowIndex]
-        local dataIndex = rowIndex + offset
-        local data = self.displayRows[dataIndex]
-        row.data = data
-
-        if not data then
-            row:Hide()
-        else
-            row:Show()
-            row.selection:SetShown(data.fullName and data.fullName == self.selectedFullName)
-
-            if data.isHeader then
-                roleRank = 0
-                row.rank:SetText("")
-                row.name:SetText(("%s %s"):format(ns:GetRoleMarkup(data.roleBucket), data.label))
-                row.name:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-                HideTexture(row.roleIcon)
-                row.roleText:SetText("")
-                HideTexture(row.specIcon)
-                row.spec:SetText("")
-                row.score:SetText("")
-                row.ilvl:SetText("")
-                row.best:SetText("")
-                ApplyCurrentKeyStatusIndicator(row.currentKey, nil)
-                row.timed20:SetText("")
-                row.timed15:SetText("")
-                row.timed10:SetText("")
-                row.timed5:SetText("")
-                row.background:SetColorTexture(0.13, 0.13, 0.18, 0.85)
-            else
-                rank = rank + 1
-                roleRank = roleRank + 1
-                row.background:SetColorTexture(0, 0, 0, rowIndex % 2 == 0 and 0.05 or 0.12)
-                ApplyRankPresentation(row.rank, roleRank)
-                row.name:SetText(ns:GetRecordDisplayName(data))
-                row.name:SetTextColor(ns:GetClassColor(data.classFile):GetRGB())
-
-                row.roleIcon:SetAtlas(ns:GetRoleAtlas(data.roleBucket), true)
-                row.roleIcon:Show()
-                row.roleText:SetText("")
-
-                if data.specIcon then
-                    row.specIcon:SetAtlas(nil)
-                    row.specIcon:SetTexture(data.specIcon)
-                else
-                    row.specIcon:SetTexture(nil)
-                    row.specIcon:SetAtlas("classhall-icon-noglow", true)
-                end
-                row.specIcon:Show()
-                row.spec:SetText(data.specName or ns.L.UNKNOWN_SPEC)
-
-                row.score:SetText(data.currentScore > 0 and data.currentScore or "-")
-                ApplyScoreColor(row.score, data.currentScore)
-
-                if ns.Config:Get("showItemLevel") and data.equippedItemLevel then
-                    row.ilvl:SetText(ns.L.ITEM_LEVEL_ROW:format(data.equippedItemLevel))
-                else
-                    row.ilvl:SetText("-")
-                end
-                row.ilvl:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-
-                row.best:SetText(BuildBestRunText(data))
-                ApplyCurrentKeyStatusIndicator(row.currentKey, data.currentKeyStatus)
-                row.timed20:SetText(data.timed20 > 0 and data.timed20 or "-")
-                row.timed15:SetText(data.timed15 > 0 and data.timed15 or "-")
-                row.timed10:SetText(data.timed10 > 0 and data.timed10 or "-")
-                row.timed5:SetText(data.timed5 > 0 and data.timed5 or "-")
-                row.timed20:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
-                row.timed15:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
-                row.timed10:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
-                row.timed5:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
-
-                ns.Inspect:QueueRecord(data)
-            end
-        end
+    self.frame.listDataProvider:Flush()
+    if totalRows > 0 then
+        self.frame.listDataProvider:InsertTable(self.displayRows)
     end
 end
 
 function Panel:RefreshDetail()
-    local frame = self.frame
-    if not frame or not frame.detail then
-        return
+    if ns.DetailPanel then
+        ns.DetailPanel:Refresh(self)
     end
-
-    local detail = frame.detail
-    local record = self.selectedFullName and ns.Data:GetRecord(self.selectedFullName)
-    if not record then
-        detail.name:SetText(ns.L.NO_SELECTION)
-        detail.source:SetText("")
-        detail.role:SetText("")
-        HideTexture(detail.specIcon)
-        detail.spec:SetText("")
-        detail.score:SetText("")
-        detail.mainScore:SetText("")
-        detail.itemLevel:SetText("")
-        detail.profileState:SetText("")
-        detail.bestRun:SetText("")
-        detail.timedRuns:SetText("")
-        for index = 1, #detail.raidRows do
-            detail.raidRows[index]:SetText("")
-        end
-        for index = 1, #detail.dungeonRows do
-            detail.dungeonRows[index]:SetText("")
-        end
-        return
-    end
-
-    detail.name:SetText(ns:GetRecordDisplayName(record))
-    detail.name:SetTextColor(ns:GetClassColor(record.classFile):GetRGB())
-    detail.source:SetText(("%s: %s"):format(ns.L.SOURCE, GetSourceLabel(record)))
-    detail.role:SetText(("%s %s (%s)"):format(
-        ns:GetRoleMarkup(record.roleBucket),
-        ns:GetRoleLabel(record.roleBucket),
-        record.roleSource == "group" and ns.L.ROLE_SOURCE_GROUP or record.roleSource == "raiderio" and ns.L.ROLE_SOURCE_RAIDERIO or ns.L.ROLE_SOURCE_UNKNOWN
-    ))
-
-    if record.specIcon then
-        detail.specIcon:SetAtlas(nil)
-        detail.specIcon:SetTexture(record.specIcon)
-    else
-        detail.specIcon:SetTexture(nil)
-        detail.specIcon:SetAtlas("classhall-icon-noglow", true)
-    end
-    detail.specIcon:Show()
-
-    detail.spec:SetText(("%s (%s)"):format(
-        record.specName or ns.L.UNKNOWN_SPEC,
-        record.specSource == "self" and ns.L.SPEC_SOURCE_SELF or record.specSource == "inspect" and ns.L.SPEC_SOURCE_INSPECT or ns.L.SPEC_SOURCE_UNKNOWN
-    ))
-
-    detail.score:SetText(("%s: %d"):format(ns.L.DETAIL_SCORE, record.currentScore or 0))
-    detail.score:SetTextColor(ns:GetScoreColor(record.currentScore):GetRGB())
-
-    if record.mainCurrentScore and record.mainCurrentScore > (record.currentScore or 0) then
-        detail.mainScore:SetText(("Main: %d"):format(record.mainCurrentScore))
-        detail.mainScore:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-    else
-        detail.mainScore:SetText("")
-    end
-
-    if ns.Config:Get("showItemLevel") then
-        local itemLevelText = record.equippedItemLevel and ns.L.ITEM_LEVEL_ROW:format(record.equippedItemLevel) or ns.L.UNKNOWN_ITEM_LEVEL
-        detail.itemLevel:SetText(("%s: %s (%s)"):format(
-            ns.L.ITEM_LEVEL,
-            itemLevelText,
-            record.itemLevelSource == "self" and ns.L.SELF_ITEM_LEVEL or record.itemLevelSource == "inspect" and ns.L.INSPECT_ITEM_LEVEL or ns.L.UNKNOWN
-        ))
-    else
-        detail.itemLevel:SetText(("%s: -"):format(ns.L.ITEM_LEVEL))
-    end
-
-    detail.profileState:SetText(("%s: %s"):format(ns.L.PROFILE_STATE, BuildProfileStateLabel(record)))
-    detail.bestRun:SetText(("%s: %s"):format(ns.L.DETAIL_BEST_RUN, BuildBestRunText(record)))
-    detail.timedRuns:SetText(("%s: 20+ %d   15+ %d   10+ %d   5+ %d"):format(
-        ns.L.DETAIL_TIMED_RUNS,
-        record.timed20 or 0,
-        record.timed15 or 0,
-        record.timed10 or 0,
-        record.timed5 or 0
-    ))
-
-    detail.raidHeader:SetShown(ns.Config:Get("showRaidContext"))
-    for index = 1, #detail.raidRows do
-        local row = detail.raidRows[index]
-        local raidInfo = record.raidSummary[index]
-        row:SetShown(ns.Config:Get("showRaidContext"))
-        if ns.Config:Get("showRaidContext") and raidInfo then
-            row:SetText(("%s %s %d/%d"):format(raidInfo.label, raidInfo.shortName, raidInfo.progressCount, raidInfo.bossCount))
-        else
-            row:SetText("")
-        end
-    end
-
-    for index = 1, #detail.dungeonRows do
-        local dungeonInfo = record.sortedDungeons[index]
-        local row = detail.dungeonRows[index]
-        if dungeonInfo and dungeonInfo.dungeon then
-            local dungeon = dungeonInfo.dungeon
-            row:SetText(("%s %d"):format(dungeon.shortNameLocale or dungeon.shortName or dungeon.name, dungeonInfo.level or 0))
-            row:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-        else
-            row:SetText("")
-            row:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-        end
-    end
-
-    ns.Inspect:QueueRecord(record)
 end
 
 function Panel:Refresh()
     if self.frame then
-        self:BuildSpecDropdown()
+        self:BuildClassDropdown()
         self:RefreshHeaderControls()
-        self.displayRows = ns.Data:GetRecords(self:GetFilters())
+        self.displayRows = self:PrepareDisplayRows(ns.Data:GetRecords(self:GetFilters()))
         self:EnsureSelected()
         self:RefreshRows()
         self:RefreshDetail()
@@ -1639,13 +1657,15 @@ end
 
 function Panel:GetInlineValues(record)
     if not record then
-        return "-", "-", nil, nil
+        return "-", "-", nil, nil, nil, false
     end
 
     local scoreText = record.currentScore > 0 and tostring(record.currentScore) or "-"
     local itemLevelText = "-"
+    local itemLevelValue = nil
     if ns.Config:Get("showItemLevel") and record.equippedItemLevel then
-        itemLevelText = ns.L.ITEM_LEVEL_ROW:format(record.equippedItemLevel)
+        itemLevelText = ns:GetItemLevelText(record.equippedItemLevel)
+        itemLevelValue = record.equippedItemLevel
     end
 
     local atlas = nil
@@ -1656,7 +1676,7 @@ function Panel:GetInlineValues(record)
         atlas = ns:GetRoleAtlas(record.roleBucket)
     end
 
-    return scoreText, itemLevelText, atlas, texture
+    return scoreText, itemLevelText, atlas, texture, itemLevelValue, record.itemLevelIsStale
 end
 
 function Panel:SetupInlineWidget(button)
@@ -1687,11 +1707,16 @@ function Panel:PopulateInlineWidget(widget, record)
         return
     end
 
-    local scoreText, itemLevelText, atlas, texture = self:GetInlineValues(record)
+    if not record or record.profileState ~= "ready" or (record.currentScore or 0) <= 0 then
+        widget:Hide()
+        return
+    end
+
+    local scoreText, itemLevelText, atlas, texture, itemLevelValue, itemLevelIsStale = self:GetInlineValues(record)
     widget.score:SetText(scoreText)
     ApplyScoreColor(widget.score, record and record.currentScore or 0)
     widget.ilvl:SetText(itemLevelText)
-    widget.ilvl:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+    ApplyItemLevelPresentation(widget.ilvl, itemLevelValue, itemLevelIsStale)
 
     if atlas then
         widget.icon:SetTexture(nil)

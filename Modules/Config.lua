@@ -10,12 +10,16 @@ local defaults = {
     enableInspectEnrichment = true,
     showRaidContext = true,
     groupByRole = true,
-    specFilter = "all",
+    classFilter = "all",
     showOffline = true,
-    showUnscored = true,
+    showUnscored = false,
     sourceFilter = "all",
     sortKey = "score",
     sortAscending = false,
+    inspectCache = {
+        byName = {},
+        byGUID = {}
+    },
     migrations = {},
     windowPoint = {
         point = "CENTER",
@@ -50,11 +54,14 @@ function Config:Initialize()
 
     CopyDefaults(_G.RaiderRanksDB, defaults)
 
-    -- V1 roster UX should default to showing the full ranked population, not
-    -- only characters with RaiderIO-renderable score data.
-    if not _G.RaiderRanksDB.migrations.showUnscoredDefaultEnabled then
-        _G.RaiderRanksDB.showUnscored = true
-        _G.RaiderRanksDB.migrations.showUnscoredDefaultEnabled = true
+    if not _G.RaiderRanksDB.migrations.hideUnscoredEntries then
+        _G.RaiderRanksDB.showUnscored = false
+        _G.RaiderRanksDB.migrations.hideUnscoredEntries = true
+    end
+
+    if not _G.RaiderRanksDB.migrations.classFilterEnabled then
+        _G.RaiderRanksDB.classFilter = "all"
+        _G.RaiderRanksDB.migrations.classFilterEnabled = true
     end
 
     ns.db = _G.RaiderRanksDB

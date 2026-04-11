@@ -11,7 +11,8 @@
 - `Modules/Config.lua` owns defaults and SavedVariables access.
 - `Modules/Data.lua` owns roster normalization, RaiderIO reads, sorting, and current-key qualification.
 - `Modules/Inspect.lua` owns best-effort self/inspect enrichment for spec and item level.
-- `UI/Panel.lua` owns the integrated Group Finder / Mythic+ tab, helper card, detail view, slash commands, addon compartment, and inline overlays.
+- `UI/Panel.lua` owns the integrated Group Finder / Mythic+ tab shell, roster/list layout, slash commands, addon compartment, and inline overlays.
+- `UI/DetailPanel.lua` owns the right-hand detail pane creation, layout, and record rendering.
 - `UI/Settings.lua` owns the native Settings category and setting widgets.
 - `Localization/` owns all addon-authored strings.
 
@@ -32,6 +33,7 @@
 - Prefer Blizzard templates, atlas icons, font objects, and global strings.
 - Reuse RaiderIO tooltips instead of recreating their profile tooltip content.
 - If changing a panel control or filter, update both panel refresh logic and the saved-variable default if it is persisted.
+- Keep `UI/Panel.lua` and `UI/DetailPanel.lua` loosely coupled through module calls so they can be edited independently without merge-heavy conflicts.
 
 ## Localization Rules
 - Every addon-authored user-visible string goes through `ns.L`.
