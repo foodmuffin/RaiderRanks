@@ -1226,7 +1226,7 @@ function Panel:ApplyListRowData(row, data)
     local timed4_8Count = GetSummaryBucketValue(data, "timed4_8")
     local timed2_3Count = GetSummaryBucketValue(data, "timed2_3")
     local stripeIndex = data.displayRank or data.displayIndex or 1
-    local isPlayerEntry = data.fullName and ns.playerFullName and data.fullName == ns.playerFullName
+    local isPlayerEntry = ns:GetFullNameKey(data.fullName, ns.playerRealm) == ns:GetFullNameKey(ns.playerFullName, ns.playerRealm)
     local playerRecord = ns.playerFullName and ns.Data:GetRecord(ns.playerFullName) or nil
     local showFriendMarker = ShouldShowFriendSourceIcon(data)
     local showActivityMarker = ShouldShowActivityMarker(data)

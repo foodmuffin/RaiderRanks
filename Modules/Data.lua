@@ -3,6 +3,7 @@ local _, ns = ...
 local Data = {
     records = {},
     recordsByKey = {},
+    recordsByIdentityKey = {},
     specCatalog = {},
     currentKeyContext = {
         mapID = nil,
@@ -266,6 +267,16 @@ local function MergeReportedKeys(primary, secondary)
     return merged
 end
 
+local function GetIdentityKey(fullName)
+    return ns:GetFullNameKey(fullName, ns.playerRealm)
+end
+
+local function AreEquivalentFullNames(left, right)
+    local leftKey = GetIdentityKey(left)
+    local rightKey = GetIdentityKey(right)
+    return type(leftKey) == "string" and leftKey == rightKey
+end
+
 function Data:CreateBlankRecord(name, realm)
     local fullName = ns:ComposeFullName(name, realm)
     return {
@@ -339,10 +350,21 @@ function Data:AddOrUpdateRecord(incoming)
         return
     end
 
+    local identityKey = GetIdentityKey(fullName)
     local record = self.recordsByKey[fullName]
+    if not record and identityKey then
+        record = self.recordsByIdentityKey[identityKey]
+    end
+
     if not record then
         record = self:CreateBlankRecord(incoming.name, incoming.realm)
-        self.recordsByKey[fullName] = record
+    elseif record.fullName and record.fullName ~= fullName then
+        self.recordsByKey[record.fullName] = nil
+    end
+
+    self.recordsByKey[fullName] = record
+    if identityKey then
+        self.recordsByIdentityKey[identityKey] = record
     end
 
     if type(incoming.name) == "string" then
@@ -380,6 +402,7 @@ end
 function Data:ResetRecords()
     wipe(self.records)
     wipe(self.recordsByKey)
+    wipe(self.recordsByIdentityKey)
     wipe(self.specCatalog)
 end
 
@@ -678,7 +701,7 @@ function Data:GetReportedKey(fullName)
     local comm = ns.Comm
 
     if comm and comm.IsEnabled and comm:IsEnabled() then
-        if fullName == ns.playerFullName and type(comm.GetLocalOwnedKey) == "function" then
+        if AreEquivalentFullNames(fullName, ns.playerFullName) and type(comm.GetLocalOwnedKey) == "function" then
             local ownedKey = comm:GetLocalOwnedKey()
             if ownedKey then
                 nativeKey = BuildNativeReportedKey(
@@ -931,7 +954,7 @@ function Data:Refresh(reason)
 end
 
 function Data:OnInspectDataReady(fullName, guid, payload)
-    local record = self.recordsByKey[fullName]
+    local record = self:GetRecord(fullName)
     if not record then
         return
     end
@@ -1056,7 +1079,13 @@ function Data:GetRecords(filters)
 end
 
 function Data:GetRecord(fullName)
-    return self.recordsByKey[fullName]
+    local record = self.recordsByKey[fullName]
+    if record then
+        return record
+    end
+
+    local identityKey = GetIdentityKey(fullName)
+    return identityKey and self.recordsByIdentityKey[identityKey] or nil
 end
 
 function Data:GetCurrentKeyContext()

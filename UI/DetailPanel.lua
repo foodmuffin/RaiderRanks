@@ -1620,7 +1620,7 @@ function DetailPanel:Refresh(panel)
     local playerRecord = ns.playerFullName and ns.Data:GetRecord(ns.playerFullName) or nil
     local yourKeyContext = ns.Data:GetCurrentKeyContext() or {}
     local reportedKey = record.reportedKey
-    local isBrowsingSelf = record.fullName == ns.playerFullName
+    local isBrowsingSelf = ns:GetFullNameKey(record.fullName, ns.playerRealm) == ns:GetFullNameKey(ns.playerFullName, ns.playerRealm)
     local canShowTheirKey = not isBrowsingSelf
         and playerRecord
         and reportedKey
