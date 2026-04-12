@@ -36,7 +36,7 @@ local nativePVEPanelNames = {
 
 local expandedPVEFrame = {
     width = 1360,
-    height = 840,
+    height = 690,
     paddingX = 80,
     paddingY = 120
 }
