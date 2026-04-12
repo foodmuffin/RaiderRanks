@@ -3,7 +3,8 @@ local _, ns = ...
 local DetailPanel = {}
 ns.DetailPanel = DetailPanel
 
-local panelBackgroundTexture = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+local panelBackgroundTexture = "Interface\\FrameGeneral\\UI-Background-Marble"
+local panelShadowTexture = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
 local marbleTexture = "Interface\\FrameGeneral\\UI-Background-Marble"
 local fallbackSpecTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
 local solidTexture = "Interface\\Buttons\\WHITE8X8"
@@ -926,8 +927,8 @@ function DetailPanel:Create(frame)
     end
 
     frame.detail = CreateFrame("Frame", nil, frame, "InsetFrameTemplate3")
-    frame.detail:SetPoint("TOPRIGHT", 0, -92)
-    frame.detail:SetPoint("BOTTOMRIGHT", 0, 0)
+    frame.detail:SetPoint("TOPRIGHT", -4, -92)
+    frame.detail:SetPoint("BOTTOMRIGHT", -4, 0)
     frame.detail:SetWidth(312)
     if frame.detail.SetClipsChildren then
         frame.detail:SetClipsChildren(true)
@@ -939,23 +940,59 @@ function DetailPanel:Create(frame)
     detail.background:SetPoint("TOPLEFT", 3, -3)
     detail.background:SetPoint("BOTTOMRIGHT", -3, 3)
     detail.background:SetTexture(panelBackgroundTexture)
-    detail.background:SetAlpha(0.95)
+    detail.background:SetVertexColor(0.92, 0.9, 0.84)
+    detail.background:SetAlpha(0.92)
 
     detail.noise = detail:CreateTexture(nil, "BORDER")
     detail.noise:SetAllPoints(detail.background)
-    detail.noise:SetTexture(marbleTexture)
-    detail.noise:SetAlpha(0.08)
+    detail.noise:SetTexture(panelShadowTexture)
+    detail.noise:SetAlpha(0.18)
     if detail.noise.SetHorizTile then
-        detail.noise:SetHorizTile(true)
-        detail.noise:SetVertTile(true)
+        detail.noise:SetHorizTile(false)
+        detail.noise:SetVertTile(false)
     end
+
+    detail.warmWash = detail:CreateTexture(nil, "ARTWORK")
+    detail.warmWash:SetAllPoints(detail.background)
+    detail.warmWash:SetTexture(solidTexture)
+    detail.warmWash:SetVertexColor(0.62, 0.55, 0.42, 0.08)
+
+    detail.marbleDetail = detail:CreateTexture(nil, "ARTWORK")
+    detail.marbleDetail:SetAllPoints(detail.background)
+    detail.marbleDetail:SetTexture(marbleTexture)
+    detail.marbleDetail:SetAlpha(0.12)
+    if detail.marbleDetail.SetHorizTile then
+        detail.marbleDetail:SetHorizTile(true)
+        detail.marbleDetail:SetVertTile(true)
+    end
+
+    detail.topGlow = detail:CreateTexture(nil, "ARTWORK")
+    detail.topGlow:SetPoint("TOPLEFT", detail.background, "TOPLEFT", 0, 0)
+    detail.topGlow:SetPoint("TOPRIGHT", detail.background, "TOPRIGHT", 0, 0)
+    detail.topGlow:SetHeight(56)
+    detail.topGlow:SetTexture(solidTexture)
+    detail.topGlow:SetVertexColor(0.96, 0.92, 0.8, 0.05)
+
+    detail.bottomShade = detail:CreateTexture(nil, "ARTWORK")
+    detail.bottomShade:SetPoint("BOTTOMLEFT", detail.background, "BOTTOMLEFT", 0, 0)
+    detail.bottomShade:SetPoint("BOTTOMRIGHT", detail.background, "BOTTOMRIGHT", 0, 0)
+    detail.bottomShade:SetHeight(72)
+    detail.bottomShade:SetTexture(solidTexture)
+    detail.bottomShade:SetVertexColor(0, 0, 0, 0.06)
 
     detail.leftShade = detail:CreateTexture(nil, "ARTWORK")
     detail.leftShade:SetPoint("TOPLEFT", 1, -1)
     detail.leftShade:SetPoint("BOTTOMLEFT", 1, 1)
-    detail.leftShade:SetWidth(5)
+    detail.leftShade:SetWidth(1)
     detail.leftShade:SetTexture(solidTexture)
-    detail.leftShade:SetVertexColor(1, 1, 1, 0.03)
+    detail.leftShade:SetVertexColor(1, 1, 1, 0.025)
+
+    detail.rightShade = detail:CreateTexture(nil, "ARTWORK")
+    detail.rightShade:SetPoint("TOPRIGHT", -1, -1)
+    detail.rightShade:SetPoint("BOTTOMRIGHT", -1, 1)
+    detail.rightShade:SetWidth(1)
+    detail.rightShade:SetTexture(solidTexture)
+    detail.rightShade:SetVertexColor(0, 0, 0, 0.025)
 
     detail.hero = CreateFrame("Frame", nil, detail)
     detail.hero.background = detail.hero:CreateTexture(nil, "BACKGROUND")
@@ -1088,7 +1125,7 @@ function DetailPanel:Create(frame)
     detail.hero.scorePlate.background = detail.hero.scorePlate:CreateTexture(nil, "BACKGROUND")
     detail.hero.scorePlate.background:SetAllPoints()
     detail.hero.scorePlate.background:SetTexture(solidTexture)
-    detail.hero.scorePlate.background:SetVertexColor(0.04, 0.04, 0.05, 0.38)
+    detail.hero.scorePlate.background:SetVertexColor(0.12, 0.11, 0.1, 0.24)
 
     detail.hero.scorePlate.glow = detail.hero.scorePlate:CreateTexture(nil, "ARTWORK")
     detail.hero.scorePlate.glow:SetPoint("TOPLEFT", 1, -1)
@@ -1353,6 +1390,7 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
     end
 
     local inset = 14
+    local heroTopInset = 10
     local sectionSpacing = 10
     local contentWidth = math.max(220, detailWidth - (inset * 2))
     local labelWidth = math.max(78, math.min(94, math.floor(contentWidth * 0.29)))
@@ -1362,7 +1400,8 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
     nameWidth = contentWidth - (bucketWidth * #timedBucketKeys) - (matrixGap * #timedBucketKeys)
 
     local heroCardGap = 8
-    local heroCardHeight = 54
+    local heroCardHeight = 46
+    local heroCardBottomInset = 2
     local scoreCardWidth = math.max(118, math.min(156, math.floor(contentWidth * 0.34)))
     local minNameCardWidth = 96
     if contentWidth < (scoreCardWidth + heroCardGap + minNameCardWidth) then
@@ -1371,13 +1410,13 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
     local nameCardWidth = contentWidth - scoreCardWidth - heroCardGap
 
     detail.hero:ClearAllPoints()
-    detail.hero:SetPoint("TOPLEFT", detail, "TOPLEFT", inset, -inset)
-    detail.hero:SetPoint("TOPRIGHT", detail, "TOPRIGHT", -inset, -inset)
+    detail.hero:SetPoint("TOPLEFT", detail, "TOPLEFT", inset - 2, -heroTopInset)
+    detail.hero:SetPoint("TOPRIGHT", detail, "TOPRIGHT", -(inset + 2), -heroTopInset)
     detail.hero:SetHeight(heroCardHeight)
 
     detail.hero.nameRibbon:ClearAllPoints()
     detail.hero.nameRibbon:SetPoint("TOPLEFT", detail.hero, "TOPLEFT", 0, 0)
-    detail.hero.nameRibbon:SetPoint("BOTTOMLEFT", detail.hero, "BOTTOMLEFT", 0, 0)
+    detail.hero.nameRibbon:SetPoint("BOTTOMLEFT", detail.hero, "BOTTOMLEFT", 0, heroCardBottomInset)
     detail.hero.nameRibbon:SetWidth(nameCardWidth)
 
     detail.hero.roleBadge:ClearAllPoints()
@@ -1392,20 +1431,20 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
 
     detail.hero.scorePlate:ClearAllPoints()
     detail.hero.scorePlate:SetPoint("TOPRIGHT", detail.hero, "TOPRIGHT", 0, 0)
-    detail.hero.scorePlate:SetPoint("BOTTOMRIGHT", detail.hero, "BOTTOMRIGHT", 0, 0)
+    detail.hero.scorePlate:SetPoint("BOTTOMRIGHT", detail.hero, "BOTTOMRIGHT", 0, heroCardBottomInset)
     detail.hero.scorePlate:SetWidth(scoreCardWidth)
 
     detail.hero.scoreLabel:ClearAllPoints()
-    detail.hero.scoreLabel:SetPoint("TOPLEFT", detail.hero.scorePlate, "TOPLEFT", 8, -5)
-    detail.hero.scoreLabel:SetPoint("TOPRIGHT", detail.hero.scorePlate, "TOPRIGHT", -8, -5)
+    detail.hero.scoreLabel:SetPoint("TOPLEFT", detail.hero.scorePlate, "TOPLEFT", 8, -4)
+    detail.hero.scoreLabel:SetPoint("TOPRIGHT", detail.hero.scorePlate, "TOPRIGHT", -8, -4)
 
     detail.hero.scoreValue:ClearAllPoints()
-    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -1)
-    detail.hero.scoreValue:SetPoint("TOPRIGHT", detail.hero.scoreLabel, "BOTTOMRIGHT", 0, -1)
+    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -2)
+    detail.hero.scoreValue:SetPoint("TOPRIGHT", detail.hero.scoreLabel, "BOTTOMRIGHT", 0, -2)
 
     detail.hero.mainScore:ClearAllPoints()
-    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -3)
-    detail.hero.mainScore:SetPoint("TOPRIGHT", detail.hero.scoreValue, "BOTTOMRIGHT", 0, -3)
+    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -2)
+    detail.hero.mainScore:SetPoint("TOPRIGHT", detail.hero.scoreValue, "BOTTOMRIGHT", 0, -2)
 
     detail.hero.emptyState:SetWidth(contentWidth - 20)
 
