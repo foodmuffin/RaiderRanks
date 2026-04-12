@@ -381,6 +381,12 @@ function Comm:BuildSnapshot()
         timed9_10 = record.timed9_10 or 0,
         timed4_8 = record.timed4_8 or 0,
         timed2_3 = record.timed2_3 or 0,
+        completed20 = record.completed20 or 0,
+        completed15 = record.completed15 or 0,
+        completed11_14 = record.completed11_14 or 0,
+        completed9_10 = record.completed9_10 or 0,
+        completed4_8 = record.completed4_8 or 0,
+        completed2_3 = record.completed2_3 or 0,
         itemLevel = ns:GetDisplayedItemLevel(record.equippedItemLevel) or 0,
         specID = record.specID or 0,
         roleBucket = record.roleBucket or "unknown",
@@ -444,7 +450,13 @@ function Comm:SerializeSnapshot(snapshot)
         tostring(snapshot.itemLevel or 0),
         tostring(snapshot.specID or 0),
         roleCodeByBucket[snapshot.roleBucket] or "U",
-        manifestText
+        manifestText,
+        tostring(snapshot.completed20 or 0),
+        tostring(snapshot.completed15 or 0),
+        tostring(snapshot.completed11_14 or 0),
+        tostring(snapshot.completed9_10 or 0),
+        tostring(snapshot.completed4_8 or 0),
+        tostring(snapshot.completed2_3 or 0)
     }, "\t")
 end
 
@@ -495,7 +507,13 @@ function Comm:DeserializeSnapshot(fields)
         itemLevel = tonumber(fields[14]) or 0,
         specID = tonumber(fields[15]) or 0,
         roleBucket = roleBucketByCode[fields[16]] or "unknown",
-        manifestDatasets = self:DecodeManifest(fields[17])
+        manifestDatasets = self:DecodeManifest(fields[17]),
+        completed20 = fields[18] and (tonumber(fields[18]) or 0) or nil,
+        completed15 = fields[19] and (tonumber(fields[19]) or 0) or nil,
+        completed11_14 = fields[20] and (tonumber(fields[20]) or 0) or nil,
+        completed9_10 = fields[21] and (tonumber(fields[21]) or 0) or nil,
+        completed4_8 = fields[22] and (tonumber(fields[22]) or 0) or nil,
+        completed2_3 = fields[23] and (tonumber(fields[23]) or 0) or nil
     }
 end
 

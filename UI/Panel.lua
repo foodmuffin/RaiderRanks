@@ -62,6 +62,18 @@ local currentKeyCheckTexture = "Interface\\Buttons\\UI-CheckBox-Check"
 local friendSourceTexture = "Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon"
 local activityMarkerAtlas = "common-icon-forwardarrow"
 local warningIconAtlas = "services-icon-warning"
+local summaryBucketFields = {
+    timed20 = { timed = "timed20", completed = "completed20" },
+    timed15 = { timed = "timed15", completed = "completed15" },
+    timed11_14 = { timed = "timed11_14", completed = "completed11_14" },
+    timed9_10 = { timed = "timed9_10", completed = "completed9_10" },
+    timed4_8 = { timed = "timed4_8", completed = "completed4_8" },
+    timed2_3 = { timed = "timed2_3", completed = "completed2_3" }
+}
+local timedBucketDisplayFields = {
+    timed15 = "displayTimed15",
+    timed2_3 = "displayTimed2_3"
+}
 
 local function CreateDivider(parent, topAnchor, topOffset)
     local divider = parent:CreateTexture(nil, "ARTWORK")
@@ -486,7 +498,32 @@ local function ShowTimedBucketHeaderTooltip(owner, bucketKey)
         GameTooltip:AddLine(bucketName, HIGHLIGHT_FONT_COLOR:GetRGB())
     end
 
+    GameTooltip:AddLine(
+        ns.Config:Get("includeCompletedRuns")
+            and ns.L.TIMED_BUCKET_SUMMARY_COMPLETED
+            or ns.L.TIMED_BUCKET_SUMMARY_TIMED,
+        NORMAL_FONT_COLOR:GetRGB(),
+        true
+    )
+
     GameTooltip:Show()
+end
+
+local function GetSummaryBucketValue(record, bucketKey)
+    local fieldInfo = summaryBucketFields[bucketKey]
+    if not record or not fieldInfo then
+        return 0
+    end
+
+    if not ns.Config:Get("includeCompletedRuns") then
+        local displayField = timedBucketDisplayFields[bucketKey]
+        if displayField and type(record[displayField]) == "number" then
+            return record[displayField]
+        end
+    end
+
+    local fieldName = ns.Config:Get("includeCompletedRuns") and fieldInfo.completed or fieldInfo.timed
+    return record[fieldName] or 0
 end
 
 local function ConfigureTimedBucketHeaderCell(cell, bucketKey)
@@ -837,6 +874,19 @@ function Panel:CreateHeader(frame)
     )
     frame.groupByRole:SetPoint("LEFT", frame.onlineOnly, "RIGHT", 6, 0)
 
+    frame.completedRuns = self:CreateCheckButton(
+        frame,
+        ns.L.INCLUDE_COMPLETED_RUNS,
+        ns.L.INCLUDE_COMPLETED_RUNS_TOOLTIP,
+        function()
+            return ns.Config:Get("includeCompletedRuns")
+        end,
+        function(value)
+            ns.Config:Set("includeCompletedRuns", value)
+        end
+    )
+    frame.completedRuns:SetPoint("LEFT", frame.groupByRole, "RIGHT", 6, 0)
+
     frame.classLabel = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     frame.classLabel:SetPoint("TOPLEFT", frame.allButton, "BOTTOMLEFT", 0, -14)
     frame.classLabel:SetText(ns.L.CLASS_FILTER)
@@ -1147,6 +1197,12 @@ function Panel:ApplyListRowData(row, data)
         return
     end
 
+    local timed20Count = GetSummaryBucketValue(data, "timed20")
+    local timed15Count = GetSummaryBucketValue(data, "timed15")
+    local timed11_14Count = GetSummaryBucketValue(data, "timed11_14")
+    local timed9_10Count = GetSummaryBucketValue(data, "timed9_10")
+    local timed4_8Count = GetSummaryBucketValue(data, "timed4_8")
+    local timed2_3Count = GetSummaryBucketValue(data, "timed2_3")
     local stripeIndex = data.displayRank or data.displayIndex or 1
     local isPlayerEntry = data.fullName and ns.playerFullName and data.fullName == ns.playerFullName
     local showFriendMarker = ShouldShowFriendSourceIcon(data)
@@ -1218,18 +1274,18 @@ function Panel:ApplyListRowData(row, data)
 
     row.best:SetText(BuildBestRunText(data))
     ApplyCurrentKeyStatusIndicator(row.currentKey, data.currentKeyStatus)
-    row.timed20:SetText(data.timed20 > 0 and data.timed20 or "-")
-    row.timed15:SetText(data.timed15 > 0 and data.timed15 or "-")
-    row.timed11_14:SetText(data.timed11_14 > 0 and data.timed11_14 or "-")
-    row.timed9_10:SetText(data.timed9_10 > 0 and data.timed9_10 or "-")
-    row.timed4_8:SetText(data.timed4_8 > 0 and data.timed4_8 or "-")
-    row.timed2_3:SetText(data.timed2_3 > 0 and data.timed2_3 or "-")
-    ApplyRunCountPresentation(row.timed20, data.timed20)
-    ApplyRunCountPresentation(row.timed15, data.timed15)
-    ApplyRunCountPresentation(row.timed11_14, data.timed11_14)
-    ApplyRunCountPresentation(row.timed9_10, data.timed9_10)
-    ApplyRunCountPresentation(row.timed4_8, data.timed4_8)
-    ApplyRunCountPresentation(row.timed2_3, data.timed2_3)
+    row.timed20:SetText(timed20Count > 0 and timed20Count or "-")
+    row.timed15:SetText(timed15Count > 0 and timed15Count or "-")
+    row.timed11_14:SetText(timed11_14Count > 0 and timed11_14Count or "-")
+    row.timed9_10:SetText(timed9_10Count > 0 and timed9_10Count or "-")
+    row.timed4_8:SetText(timed4_8Count > 0 and timed4_8Count or "-")
+    row.timed2_3:SetText(timed2_3Count > 0 and timed2_3Count or "-")
+    ApplyRunCountPresentation(row.timed20, timed20Count)
+    ApplyRunCountPresentation(row.timed15, timed15Count)
+    ApplyRunCountPresentation(row.timed11_14, timed11_14Count)
+    ApplyRunCountPresentation(row.timed9_10, timed9_10Count)
+    ApplyRunCountPresentation(row.timed4_8, timed4_8Count)
+    ApplyRunCountPresentation(row.timed2_3, timed2_3Count)
 
     ns.Inspect:QueueRecord(data)
 end
@@ -1562,7 +1618,7 @@ function Panel:ApplyLayout()
     local dropdown = self:EnsureClassDropdown()
     local toolbarBottom = LayoutFlowRow(
         frame,
-        { frame.allButton, frame.guildButton, frame.friendsButton, frame.onlineOnly, frame.groupByRole, dropdown },
+        { frame.allButton, frame.guildButton, frame.friendsButton, frame.onlineOnly, frame.groupByRole, frame.completedRuns, dropdown },
         leftInset,
         actionLeft - 16,
         headerTop,
@@ -1855,6 +1911,7 @@ function Panel:RefreshHeaderControls()
 
     frame.onlineOnly:SetChecked(not ns.Config:Get("showOffline"))
     frame.groupByRole:SetChecked(ns.Config:Get("groupByRole"))
+    frame.completedRuns:SetChecked(ns.Config:Get("includeCompletedRuns"))
     UpdateCurrentKeyHeader(frame.list and frame.list.header and frame.list.header.currentKey)
 
     if frame.networkWarningButton then

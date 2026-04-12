@@ -19,6 +19,7 @@ local defaults = {
     showNewerRaiderIOWarning = true,
     showLiveKeyActivity = true,
     groupByRole = true,
+    includeCompletedRuns = false,
     classFilter = "all",
     showOffline = true,
     showUnscored = false,

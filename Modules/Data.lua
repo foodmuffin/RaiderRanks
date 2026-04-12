@@ -52,6 +52,17 @@ local function CountTimedRunsAtOrAbove(sortedDungeons, threshold)
     return count
 end
 
+local function CountCompletedRunsAtOrAbove(sortedDungeons, threshold)
+    local count = 0
+    for index = 1, #(sortedDungeons or {}) do
+        local dungeonProfile = sortedDungeons[index]
+        if dungeonProfile and (dungeonProfile.level or 0) >= threshold then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 local function CountTimedRunsInRange(sortedDungeons, minimumLevel, maximumLevel)
     local count = 0
     for index = 1, #(sortedDungeons or {}) do
@@ -66,6 +77,66 @@ local function CountTimedRunsInRange(sortedDungeons, minimumLevel, maximumLevel)
     end
 
     return count
+end
+
+local function CountCompletedRunsInRange(sortedDungeons, minimumLevel, maximumLevel)
+    local count = 0
+    for index = 1, #(sortedDungeons or {}) do
+        local dungeonProfile = sortedDungeons[index]
+        local level = dungeonProfile and (dungeonProfile.level or 0) or 0
+        if dungeonProfile and level >= minimumLevel and level <= maximumLevel then
+            count = count + 1
+        end
+    end
+
+    return count
+end
+
+local function PopulateRunSummary(record)
+    local sortedDungeons = record and record.sortedDungeons or {}
+    record.timed20 = CountTimedRunsAtOrAbove(sortedDungeons, 20)
+    record.timed15 = CountTimedRunsAtOrAbove(sortedDungeons, 15)
+    record.timed11_14 = CountTimedRunsInRange(sortedDungeons, 11, 14)
+    record.timed9_10 = CountTimedRunsInRange(sortedDungeons, 9, 10)
+    record.timed4_8 = CountTimedRunsInRange(sortedDungeons, 4, 8)
+    record.timed2_3 = CountTimedRunsInRange(sortedDungeons, 2, 3)
+    record.completed20 = CountCompletedRunsAtOrAbove(sortedDungeons, 20)
+    record.completed15 = CountCompletedRunsAtOrAbove(sortedDungeons, 15)
+    record.completed11_14 = CountCompletedRunsInRange(sortedDungeons, 11, 14)
+    record.completed9_10 = CountCompletedRunsInRange(sortedDungeons, 9, 10)
+    record.completed4_8 = CountCompletedRunsInRange(sortedDungeons, 4, 8)
+    record.completed2_3 = CountCompletedRunsInRange(sortedDungeons, 2, 3)
+end
+
+local function ApplySnapshotRunSummary(record, snapshot)
+    record.timed20 = snapshot.timed20 or 0
+    record.timed15 = snapshot.timed15 or 0
+    record.timed11_14 = snapshot.timed11_14 or 0
+    record.timed9_10 = snapshot.timed9_10 or 0
+    record.timed4_8 = snapshot.timed4_8 or 0
+    record.timed2_3 = snapshot.timed2_3 or 0
+    record.completed20 = snapshot.completed20 ~= nil and (snapshot.completed20 or 0) or math.max(record.completed20 or 0, record.timed20 or 0)
+    record.completed15 = snapshot.completed15 ~= nil and (snapshot.completed15 or 0) or math.max(record.completed15 or 0, record.timed15 or 0)
+    record.completed11_14 = snapshot.completed11_14 ~= nil and (snapshot.completed11_14 or 0) or math.max(record.completed11_14 or 0, record.timed11_14 or 0)
+    record.completed9_10 = snapshot.completed9_10 ~= nil and (snapshot.completed9_10 or 0) or math.max(record.completed9_10 or 0, record.timed9_10 or 0)
+    record.completed4_8 = snapshot.completed4_8 ~= nil and (snapshot.completed4_8 or 0) or math.max(record.completed4_8 or 0, record.timed4_8 or 0)
+    record.completed2_3 = snapshot.completed2_3 ~= nil and (snapshot.completed2_3 or 0) or math.max(record.completed2_3 or 0, record.timed2_3 or 0)
+end
+
+local function ApplyMilestoneDisplayFloors(record)
+    if not record then
+        return
+    end
+
+    if type(record.displayTimed15) == "number" then
+        record.timed15 = math.max(record.timed15 or 0, record.displayTimed15)
+        record.completed15 = math.max(record.completed15 or 0, record.displayTimed15)
+    end
+
+    if type(record.displayTimed2_3) == "number" then
+        record.timed2_3 = math.max(record.timed2_3 or 0, record.displayTimed2_3)
+        record.completed2_3 = math.max(record.completed2_3 or 0, record.displayTimed2_3)
+    end
 end
 
 local function ResolveSharedSpecInfo(data, specID)
@@ -102,6 +173,12 @@ local function HasSharedMythicData(snapshot)
         or (snapshot.timed9_10 or 0) > 0
         or (snapshot.timed4_8 or 0) > 0
         or (snapshot.timed2_3 or 0) > 0
+        or (snapshot.completed20 or 0) > 0
+        or (snapshot.completed15 or 0) > 0
+        or (snapshot.completed11_14 or 0) > 0
+        or (snapshot.completed9_10 or 0) > 0
+        or (snapshot.completed4_8 or 0) > 0
+        or (snapshot.completed2_3 or 0) > 0
 end
 
 function Data:CreateBlankRecord(name, realm)
@@ -130,6 +207,14 @@ function Data:CreateBlankRecord(name, realm)
         timed9_10 = 0,
         timed4_8 = 0,
         timed2_3 = 0,
+        displayTimed15 = nil,
+        displayTimed2_3 = nil,
+        completed20 = 0,
+        completed15 = 0,
+        completed11_14 = 0,
+        completed9_10 = 0,
+        completed4_8 = 0,
+        completed2_3 = 0,
         sortedDungeons = {},
         equippedItemLevel = nil,
         itemLevelSource = "unknown",
@@ -311,6 +396,14 @@ function Data:ApplyRaiderIO(record)
     record.timed9_10 = 0
     record.timed4_8 = 0
     record.timed2_3 = 0
+    record.displayTimed15 = nil
+    record.displayTimed2_3 = nil
+    record.completed20 = 0
+    record.completed15 = 0
+    record.completed11_14 = 0
+    record.completed9_10 = 0
+    record.completed4_8 = 0
+    record.completed2_3 = 0
     record.sortedDungeons = {}
     record.raidSummary = {}
     record.hasRenderableProfile = false
@@ -339,12 +432,14 @@ function Data:ApplyRaiderIO(record)
         record.mainCurrentScore = mythic.mainCurrentScore and ns:Round(mythic.mainCurrentScore) or nil
         record.maxDungeonLevel = mythic.maxDungeonLevel or 0
         record.sortedDungeons = mythic.sortedDungeons or {}
-        record.timed20 = CountTimedRunsAtOrAbove(record.sortedDungeons, 20)
-        record.timed15 = CountTimedRunsAtOrAbove(record.sortedDungeons, 15)
-        record.timed11_14 = CountTimedRunsInRange(record.sortedDungeons, 11, 14)
-        record.timed9_10 = CountTimedRunsInRange(record.sortedDungeons, 9, 10)
-        record.timed4_8 = CountTimedRunsInRange(record.sortedDungeons, 4, 8)
-        record.timed2_3 = CountTimedRunsInRange(record.sortedDungeons, 2, 3)
+        PopulateRunSummary(record)
+        if type(mythic.keystoneMilestone15) == "number" then
+            record.displayTimed15 = mythic.keystoneMilestone15
+        end
+        if type(mythic.keystoneMilestone2) == "number" then
+            record.displayTimed2_3 = mythic.keystoneMilestone2
+        end
+        ApplyMilestoneDisplayFloors(record)
 
         local currentRoles = mythic.mplusCurrent and mythic.mplusCurrent.roles
         if type(currentRoles) == "table" and currentRoles[1] and currentRoles[1][1] then
@@ -421,12 +516,7 @@ function Data:ApplyCommOverlay(record)
         record.currentScore = snapshot.currentScore or 0
         record.mainCurrentScore = (snapshot.mainCurrentScore or 0) > 0 and snapshot.mainCurrentScore or nil
         record.maxDungeonLevel = snapshot.maxDungeonLevel or 0
-        record.timed20 = snapshot.timed20 or 0
-        record.timed15 = snapshot.timed15 or 0
-        record.timed11_14 = snapshot.timed11_14 or 0
-        record.timed9_10 = snapshot.timed9_10 or 0
-        record.timed4_8 = snapshot.timed4_8 or 0
-        record.timed2_3 = snapshot.timed2_3 or 0
+        ApplySnapshotRunSummary(record, snapshot)
         record.profileState = "ready"
         record.scoreSource = "shared"
         record.scoreObservedAt = snapshot.observedAt
@@ -475,6 +565,7 @@ function Data:ApplyCommOverlay(record)
     end
 
     record.activeRun = comm:GetActiveRun(record.fullName)
+    ApplyMilestoneDisplayFloors(record)
 end
 
 function Data:ApplyAstralKeys(record)

@@ -78,18 +78,32 @@ function SettingsPanel:RefreshAstralKeysMetadata()
 end
 
 function SettingsPanel:RefreshControls()
-    if not self.panel or not self.panel.guildSyncMaster then
+    if not self.panel then
         return
     end
 
     local channelEnabled = ns.Config:Get("enableGuildSyncChannel")
-    self.panel.guildSyncMaster:SetChecked(channelEnabled)
-    self.panel.newerWarningToggle:SetChecked(ns.Config:Get("showNewerRaiderIOWarning"))
-    self.panel.liveActivityToggle:SetChecked(ns.Config:Get("showLiveKeyActivity"))
+    if self.panel.groupByRoleToggle then
+        self.panel.groupByRoleToggle:SetChecked(ns.Config:Get("groupByRole"))
+    end
+    if self.panel.completedRunsToggle then
+        self.panel.completedRunsToggle:SetChecked(ns.Config:Get("includeCompletedRuns"))
+    end
+    if self.panel.guildSyncMaster then
+        self.panel.guildSyncMaster:SetChecked(channelEnabled)
+    end
+    if self.panel.newerWarningToggle then
+        self.panel.newerWarningToggle:SetChecked(ns.Config:Get("showNewerRaiderIOWarning"))
+    end
+    if self.panel.liveActivityToggle then
+        self.panel.liveActivityToggle:SetChecked(ns.Config:Get("showLiveKeyActivity"))
+    end
 
     SetCheckboxEnabled(self.panel.newerWarningToggle, channelEnabled)
     SetCheckboxEnabled(self.panel.liveActivityToggle, channelEnabled)
-    self.panel.guildSyncDisabled:SetShown(not channelEnabled)
+    if self.panel.guildSyncDisabled then
+        self.panel.guildSyncDisabled:SetShown(not channelEnabled)
+    end
 end
 
 function SettingsPanel:RefreshAll()
@@ -137,8 +151,31 @@ function SettingsPanel:Create()
     panel.description:SetWordWrap(true)
     panel.description:SetText(ns.L.ADDON_DESCRIPTION)
 
+    panel.panelHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    panel.panelHeader:SetPoint("TOPLEFT", panel.description, "BOTTOMLEFT", 0, -20)
+    panel.panelHeader:SetText(ns.L.SETTINGS_PANEL_HEADER)
+
+    panel.panelDescription = CreateWrappedText(panel, "GameFontHighlightSmall", panel.panelHeader, -10)
+    panel.panelDescription:SetText(ns.L.SETTINGS_PANEL_DESCRIPTION)
+
+    panel.groupByRoleToggle = CreateCheckbox(
+        panel,
+        panel.panelDescription,
+        -12,
+        ns.L.SETTING_GROUP_BY_ROLE,
+        "groupByRole"
+    )
+
+    panel.completedRunsToggle = CreateCheckbox(
+        panel,
+        panel.groupByRoleToggle,
+        -8,
+        ns.L.SETTING_INCLUDE_COMPLETED_RUNS,
+        "includeCompletedRuns"
+    )
+
     panel.guildSyncHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    panel.guildSyncHeader:SetPoint("TOPLEFT", panel.description, "BOTTOMLEFT", 0, -20)
+    panel.guildSyncHeader:SetPoint("TOPLEFT", panel.completedRunsToggle, "BOTTOMLEFT", 0, -20)
     panel.guildSyncHeader:SetText(ns.L.SETTINGS_GUILD_SYNC_HEADER)
 
     panel.guildSyncDescription = CreateWrappedText(panel, "GameFontHighlightSmall", panel.guildSyncHeader, -10)

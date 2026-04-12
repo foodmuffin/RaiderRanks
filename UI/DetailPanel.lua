@@ -18,6 +18,15 @@ local timedBucketKeys = {
     "timed2_3"
 }
 
+local timedBucketMinimumLevels = {
+    timed20 = 20,
+    timed15 = 15,
+    timed11_14 = 11,
+    timed9_10 = 9,
+    timed4_8 = 4,
+    timed2_3 = 2
+}
+
 -- Score thresholds for "just timed" and "just over time" projections.
 local dungeonScoreThresholds = {
     [2] = {155, 139.962},
@@ -115,6 +124,86 @@ local function CreateValueRow(parent, labelText)
     return row
 end
 
+local function CreateKeyTabButton(parent, labelText, tabID)
+    local button = CreateFrame("Button", nil, parent)
+    button.tabID = tabID
+    button:SetHeight(20)
+    if button.SetMotionScriptsWhileDisabled then
+        button:SetMotionScriptsWhileDisabled(true)
+    end
+
+    button.background = button:CreateTexture(nil, "BACKGROUND")
+    button.background:SetAllPoints()
+    button.background:SetTexture(solidTexture)
+
+    button.topBorder = button:CreateTexture(nil, "BORDER")
+    button.topBorder:SetPoint("TOPLEFT", 0, 0)
+    button.topBorder:SetPoint("TOPRIGHT", 0, 0)
+    button.topBorder:SetHeight(1)
+    button.topBorder:SetTexture(solidTexture)
+
+    button.bottomBorder = button:CreateTexture(nil, "BORDER")
+    button.bottomBorder:SetPoint("BOTTOMLEFT", 0, 0)
+    button.bottomBorder:SetPoint("BOTTOMRIGHT", 0, 0)
+    button.bottomBorder:SetHeight(1)
+    button.bottomBorder:SetTexture(solidTexture)
+    button.bottomBorder:SetVertexColor(0, 0, 0, 0.7)
+
+    button.leftBorder = button:CreateTexture(nil, "BORDER")
+    button.leftBorder:SetPoint("TOPLEFT", 0, 0)
+    button.leftBorder:SetPoint("BOTTOMLEFT", 0, 0)
+    button.leftBorder:SetWidth(1)
+    button.leftBorder:SetTexture(solidTexture)
+    button.leftBorder:SetVertexColor(1, 1, 1, 0.08)
+
+    button.rightBorder = button:CreateTexture(nil, "BORDER")
+    button.rightBorder:SetPoint("TOPRIGHT", 0, 0)
+    button.rightBorder:SetPoint("BOTTOMRIGHT", 0, 0)
+    button.rightBorder:SetWidth(1)
+    button.rightBorder:SetTexture(solidTexture)
+    button.rightBorder:SetVertexColor(1, 1, 1, 0.08)
+
+    button.highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    button.highlight:SetAllPoints()
+    button.highlight:SetTexture(solidTexture)
+    button.highlight:SetVertexColor(1, 1, 1, 0.04)
+
+    button.selected = button:CreateTexture(nil, "ARTWORK")
+    button.selected:SetPoint("BOTTOMLEFT", 0, 0)
+    button.selected:SetPoint("BOTTOMRIGHT", 0, 0)
+    button.selected:SetHeight(2)
+    button.selected:SetTexture(solidTexture)
+    button.selected:Hide()
+
+    button.text = button:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    button.text:SetPoint("LEFT", 6, 0)
+    button.text:SetPoint("RIGHT", -20, 0)
+    button.text:SetJustifyH("CENTER")
+    button.text:SetText(labelText or "")
+
+    return button
+end
+
+local function CreateInlineInfoButton(parent)
+    local button = CreateFrame("Button", nil, parent)
+    button:SetSize(14, 14)
+    if button.SetMotionScriptsWhileDisabled then
+        button:SetMotionScriptsWhileDisabled(true)
+    end
+    if button.SetHitRectInsets then
+        button:SetHitRectInsets(-4, -4, -4, -4)
+    end
+    button:SetNormalTexture("Interface\\Common\\help-i")
+    button:SetHighlightTexture("Interface\\Common\\help-i", "ADD")
+    button:SetPushedTexture("Interface\\Common\\help-i")
+    button:GetNormalTexture():SetAllPoints()
+    button:GetHighlightTexture():SetAllPoints()
+    button:GetHighlightTexture():SetAlpha(0.2)
+    button:GetPushedTexture():SetAllPoints()
+    button:GetPushedTexture():SetVertexColor(0.9, 0.9, 0.9, 1)
+    return button
+end
+
 local function CreateHeaderCell(parent)
     local cell = CreateFrame("Button", nil, parent)
     cell.background = cell:CreateTexture(nil, "BACKGROUND")
@@ -184,6 +273,41 @@ local function CreateMatrixCell(parent)
     cell.value:SetPoint("RIGHT", -3, 0)
     cell.value:SetJustifyH("CENTER")
     cell.value:SetWordWrap(false)
+
+    cell.marker = cell:CreateTexture(nil, "ARTWORK")
+    cell.marker:SetSize(11, 11)
+    cell.marker:SetPoint("CENTER")
+    cell.marker:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    cell.marker:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+    cell.marker:Hide()
+
+    cell.testedTop = cell:CreateTexture(nil, "OVERLAY")
+    cell.testedTop:SetPoint("TOPLEFT", 0, 0)
+    cell.testedTop:SetPoint("TOPRIGHT", 0, 0)
+    cell.testedTop:SetHeight(1)
+    cell.testedTop:SetTexture(solidTexture)
+    cell.testedTop:Hide()
+
+    cell.testedBottom = cell:CreateTexture(nil, "OVERLAY")
+    cell.testedBottom:SetPoint("BOTTOMLEFT", 0, 0)
+    cell.testedBottom:SetPoint("BOTTOMRIGHT", 0, 0)
+    cell.testedBottom:SetHeight(1)
+    cell.testedBottom:SetTexture(solidTexture)
+    cell.testedBottom:Hide()
+
+    cell.testedLeft = cell:CreateTexture(nil, "OVERLAY")
+    cell.testedLeft:SetPoint("TOPLEFT", 0, 0)
+    cell.testedLeft:SetPoint("BOTTOMLEFT", 0, 0)
+    cell.testedLeft:SetWidth(1)
+    cell.testedLeft:SetTexture(solidTexture)
+    cell.testedLeft:Hide()
+
+    cell.testedRight = cell:CreateTexture(nil, "OVERLAY")
+    cell.testedRight:SetPoint("TOPRIGHT", 0, 0)
+    cell.testedRight:SetPoint("BOTTOMRIGHT", 0, 0)
+    cell.testedRight:SetWidth(1)
+    cell.testedRight:SetTexture(solidTexture)
+    cell.testedRight:Hide()
 
     return cell
 end
@@ -381,6 +505,66 @@ local function SetSectionHeight(section, height)
     section:SetHeight(height)
 end
 
+local function UpdateKeyTabButton(button, isSelected, isEnabled)
+    if not button then
+        return
+    end
+
+    button.isTabEnabled = isEnabled
+    button:SetEnabled(isEnabled)
+
+    if isSelected and isEnabled then
+        button.background:SetVertexColor(1, 1, 1, 0.08)
+        button.topBorder:SetVertexColor(1, 1, 1, 0.16)
+        button.selected:SetVertexColor(1, 0.82, 0.12, 0.95)
+        button.selected:Show()
+        button.text:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+    elseif isEnabled then
+        button.background:SetVertexColor(1, 1, 1, 0.03)
+        button.topBorder:SetVertexColor(1, 1, 1, 0.08)
+        button.selected:Hide()
+        button.text:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
+    else
+        button.background:SetVertexColor(1, 1, 1, 0.015)
+        button.topBorder:SetVertexColor(1, 1, 1, 0.04)
+        button.selected:Hide()
+        button.text:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+    end
+end
+
+local function ShowKeyTabTooltip(owner)
+    if not owner or not owner.tooltipText or owner.tooltipText == "" then
+        return
+    end
+
+    local titleR, titleG, titleB = HIGHLIGHT_FONT_COLOR:GetRGB()
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:SetText(owner.tooltipTitle or owner.text:GetText() or "", titleR, titleG, titleB)
+    GameTooltip:AddLine(owner.tooltipText, titleR, titleG, titleB, true)
+    GameTooltip:Show()
+end
+
+local function ResolveActiveKeyTab(detail, canShowTheirKey)
+    if detail.activeKeyTab == "their" and canShowTheirKey then
+        return "their"
+    end
+
+    detail.activeKeyTab = "your"
+    return "your"
+end
+
+local function OnKeyTabButtonClicked(self)
+    local detail = self and self.detail
+    if not detail or not self:IsEnabled() or detail.activeKeyTab == self.tabID then
+        return
+    end
+
+    detail.activeKeyTab = self.tabID
+    if detail.panel then
+        DetailPanel:Refresh(detail.panel)
+    end
+end
+
 local function GetDungeonTexture(dungeon)
     if not dungeon then
         return dungeonFallbackTexture
@@ -418,6 +602,39 @@ local function GetDungeonBucketKey(level)
     end
 
     return "timed2_3"
+end
+
+local function DoesDungeonMeetBucket(dungeonProfile, bucketKey)
+    if not dungeonProfile or (dungeonProfile.chests or 0) <= 0 then
+        return false
+    end
+
+    local minimumLevel = timedBucketMinimumLevels[bucketKey]
+    return minimumLevel ~= nil and (dungeonProfile.level or 0) >= minimumLevel
+end
+
+local function SetMatrixCellTested(cell, isTested)
+    if not cell then
+        return
+    end
+
+    local testedR, testedG, testedB = 1, 0.82, 0.12
+    cell.testedTop:SetVertexColor(testedR, testedG, testedB, isTested and 0.95 or 0)
+    cell.testedBottom:SetVertexColor(testedR, testedG, testedB, isTested and 0.95 or 0)
+    cell.testedLeft:SetVertexColor(testedR, testedG, testedB, isTested and 0.95 or 0)
+    cell.testedRight:SetVertexColor(testedR, testedG, testedB, isTested and 0.95 or 0)
+
+    if isTested then
+        cell.testedTop:Show()
+        cell.testedBottom:Show()
+        cell.testedLeft:Show()
+        cell.testedRight:Show()
+    else
+        cell.testedTop:Hide()
+        cell.testedBottom:Hide()
+        cell.testedLeft:Hide()
+        cell.testedRight:Hide()
+    end
 end
 
 local function GetRunStatusLabel(chests)
@@ -470,15 +687,6 @@ local function BuildRunSummaryText(dungeonProfile)
     end
 
     return BuildRaiderIORunText(dungeonProfile.level or 0, dungeonProfile.chests or 0)
-end
-
-local function BuildRunBucketText(dungeonProfile)
-    if not dungeonProfile or (dungeonProfile.level or 0) <= 0 then
-        return "-"
-    end
-
-    local bucketKey = GetDungeonBucketKey(dungeonProfile.level)
-    return bucketKey and ns:GetTimedBucketLabel(bucketKey) or "-"
 end
 
 local function GetKeystoneLevelColor(level)
@@ -591,12 +799,12 @@ local function GetKeyScoreImpact(bestProfile, targetLevel, isTimed)
 end
 
 local function BuildKeyScoreImpactText(bestProfile, targetLevel, isTimed)
-    local impact = ns:Round(GetKeyScoreImpact(bestProfile, targetLevel, isTimed), 1)
+    local impact = ns:Round(GetKeyScoreImpact(bestProfile, targetLevel, isTimed))
     if impact <= 0 then
         return ns.L.DETAIL_KEY_NO_SCORE_CHANGE
     end
 
-    return ("%+.1f"):format(impact)
+    return ("%+d"):format(impact)
 end
 
 local function GetKeyScoreImpactColor(bestProfile, targetLevel, isTimed)
@@ -650,38 +858,28 @@ local function ShowDungeonCellTooltip(owner, row, bucketKey)
     GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
     GameTooltip:SetText(dungeon.name or dungeon.shortNameLocale or dungeon.shortName or DUNGEONS)
 
+    local bestBucketKey = GetDungeonBucketKey(dungeonProfile.level)
+    local selectedBucketKey = row.keyContext and row.keyContext.level and GetDungeonBucketKey(row.keyContext.level) or nil
+    local hasBucketNote = false
+
     if (dungeonProfile.level or 0) > 0 then
         GameTooltip:AddDoubleLine(ns.L.DETAIL_BEST_RUN, BuildRunSummaryText(dungeonProfile), 1, 1, 1, GetRunStatusColor(dungeonProfile.chests or 0):GetRGB())
         GameTooltip:AddDoubleLine(ns.L.STATUS_TEXT, GetRunStatusLabel(dungeonProfile.chests or 0), 1, 1, 1, 1, 1, 1)
-        GameTooltip:AddDoubleLine(ns.L.DETAIL_DUNGEON_BUCKET, BuildRunBucketText(dungeonProfile), 1, 1, 1, 1, 1, 1)
-        if bucketKey then
-            GameTooltip:AddDoubleLine(ns.L.DETAIL_SELECTED_BUCKET, ns:GetTimedBucketLabel(bucketKey), 1, 1, 1, 1, 1, 1)
+
+        if bucketKey and bucketKey ~= bestBucketKey and DoesDungeonMeetBucket(dungeonProfile, bucketKey) then
+            local bucketR, bucketG, bucketB = NORMAL_FONT_COLOR:GetRGB()
+            GameTooltip:AddLine(ns.L.DETAIL_DUNGEON_BUCKET_COVERED:format(ns:GetTimedBucketLabel(bucketKey)), bucketR, bucketG, bucketB, true)
+            hasBucketNote = true
         end
     else
         GameTooltip:AddLine(ns.L.DETAIL_NO_RECORDED_RUN, GRAY_FONT_COLOR:GetRGB())
     end
 
-    if row.isCurrentKeyRow and row.keyContext and row.keyContext.level then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(ns.L.DETAIL_YOUR_KEY, NORMAL_FONT_COLOR:GetRGB())
-        GameTooltip:AddDoubleLine(ns.L.CURRENT_KEY, ("+%d"):format(row.keyContext.level), 1, 0.82, 0.12, 1, 1, 1)
-        GameTooltip:AddDoubleLine(ns.L.DETAIL_KEY_AT_LEVEL, BuildCurrentKeyStatusLabel(row.record.currentKeyStatus), 1, 1, 1, 1, 1, 1)
-        GameTooltip:AddDoubleLine(
-            ns.L.DETAIL_KEY_IF_TIMED,
-            BuildKeyScoreImpactText(dungeonProfile, row.keyContext.level, true),
-            1,
-            1,
-            1,
-            GetKeyScoreImpactColor(dungeonProfile, row.keyContext.level, true):GetRGB()
-        )
-        GameTooltip:AddDoubleLine(
-            ns.L.DETAIL_KEY_IF_COMPLETED,
-            BuildKeyScoreImpactText(dungeonProfile, row.keyContext.level, false),
-            1,
-            1,
-            1,
-            GetKeyScoreImpactColor(dungeonProfile, row.keyContext.level, false):GetRGB()
-        )
+    if bucketKey and row.isCurrentKeyRow and bucketKey == selectedBucketKey then
+        if hasBucketNote then
+            GameTooltip:AddLine(" ")
+        end
+        GameTooltip:AddLine(ns.L.DETAIL_DUNGEON_BUCKET_SELECTED_KEY, 1, 0.82, 0.12, true)
     end
 
     GameTooltip:Show()
@@ -696,6 +894,17 @@ local function ShowHeroInfoTooltip(owner, record)
     GameTooltip:SetText(ns:GetRecordDisplayName(record))
     GameTooltip:AddDoubleLine(ns.L.SOURCE, GetSourceLabel(record), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine(ns.L.PROFILE_STATE, BuildProfileStateLabel(record), 1, 1, 1, 1, 1, 1)
+    GameTooltip:Show()
+end
+
+local function ShowHeroRoleTooltip(owner, record)
+    if not owner or not record then
+        return
+    end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:SetText(ns:GetRoleLabel(record.roleBucket))
+    GameTooltip:AddLine(BuildRoleSourceLabel(record), NORMAL_FONT_COLOR:GetRGB(), true)
     GameTooltip:Show()
 end
 
@@ -768,9 +977,52 @@ function DetailPanel:Create(frame)
     CreateBorder(detail.hero, "TOPLEFT", "BOTTOMLEFT", 1, nil)
     CreateBorder(detail.hero, "TOPRIGHT", "BOTTOMRIGHT", 1, nil)
 
-    detail.hero.name = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    detail.hero.name:SetPoint("TOPLEFT", 14, -64)
+    detail.hero.name = detail.hero:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Large")
+    detail.hero.name:SetPoint("TOPLEFT", 34, -10)
     detail.hero.name:SetJustifyH("LEFT")
+    detail.hero.name:SetWordWrap(false)
+
+    detail.hero.roleBadge = CreateFrame("Button", nil, detail.hero)
+    detail.hero.roleBadge:SetSize(14, 14)
+    detail.hero.roleBadge.background = detail.hero.roleBadge:CreateTexture(nil, "BACKGROUND")
+    detail.hero.roleBadge.background:SetAllPoints()
+    detail.hero.roleBadge.background:SetTexture(solidTexture)
+    detail.hero.roleBadge.background:SetVertexColor(1, 1, 1, 0)
+    detail.hero.roleBadge.topBorder = detail.hero.roleBadge:CreateTexture(nil, "BORDER")
+    detail.hero.roleBadge.topBorder:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.roleBadge.topBorder:SetPoint("TOPRIGHT", 0, 0)
+    detail.hero.roleBadge.topBorder:SetHeight(1)
+    detail.hero.roleBadge.topBorder:SetTexture(solidTexture)
+    detail.hero.roleBadge.topBorder:SetVertexColor(1, 1, 1, 0)
+    detail.hero.roleBadge.bottomBorder = detail.hero.roleBadge:CreateTexture(nil, "BORDER")
+    detail.hero.roleBadge.bottomBorder:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.roleBadge.bottomBorder:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail.hero.roleBadge.bottomBorder:SetHeight(1)
+    detail.hero.roleBadge.bottomBorder:SetTexture(solidTexture)
+    detail.hero.roleBadge.bottomBorder:SetVertexColor(0, 0, 0, 0)
+    detail.hero.roleBadge.leftBorder = detail.hero.roleBadge:CreateTexture(nil, "BORDER")
+    detail.hero.roleBadge.leftBorder:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.roleBadge.leftBorder:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.roleBadge.leftBorder:SetWidth(1)
+    detail.hero.roleBadge.leftBorder:SetTexture(solidTexture)
+    detail.hero.roleBadge.leftBorder:SetVertexColor(1, 1, 1, 0)
+    detail.hero.roleBadge.rightBorder = detail.hero.roleBadge:CreateTexture(nil, "BORDER")
+    detail.hero.roleBadge.rightBorder:SetPoint("TOPRIGHT", 0, 0)
+    detail.hero.roleBadge.rightBorder:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail.hero.roleBadge.rightBorder:SetWidth(1)
+    detail.hero.roleBadge.rightBorder:SetTexture(solidTexture)
+    detail.hero.roleBadge.rightBorder:SetVertexColor(1, 1, 1, 0)
+    detail.hero.roleBadge.highlight = detail.hero.roleBadge:CreateTexture(nil, "HIGHLIGHT")
+    detail.hero.roleBadge.highlight:SetAllPoints()
+    detail.hero.roleBadge.highlight:SetTexture(solidTexture)
+    detail.hero.roleBadge.highlight:SetVertexColor(1, 1, 1, 0.08)
+    detail.hero.roleBadge.icon = detail.hero.roleBadge:CreateTexture(nil, "ARTWORK")
+    detail.hero.roleBadge.icon:SetPoint("CENTER")
+    detail.hero.roleBadge.icon:SetSize(14, 14)
+    detail.hero.roleBadge:SetScript("OnEnter", function(self)
+        ShowHeroRoleTooltip(self, self.record)
+    end)
+    detail.hero.roleBadge:SetScript("OnLeave", GameTooltip_Hide)
 
     detail.hero.meta = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     detail.hero.meta:SetPoint("TOPLEFT", detail.hero.name, "BOTTOMLEFT", 0, -4)
@@ -778,48 +1030,40 @@ function DetailPanel:Create(frame)
     detail.hero.meta:Hide()
 
     detail.hero.scoreLabel = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    detail.hero.scoreLabel:SetPoint("TOPLEFT", 14, -14)
+    detail.hero.scoreLabel:SetPoint("TOPLEFT", detail.hero.name, "BOTTOMLEFT", 0, -6)
     detail.hero.scoreLabel:SetJustifyH("LEFT")
     detail.hero.scoreLabel:SetText(ns.L.DETAIL_SCORE)
+    detail.hero.scoreLabel:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
 
-    detail.hero.scoreValue = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -2)
+    detail.hero.scoreValue = detail.hero:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Huge3")
+    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -1)
     detail.hero.scoreValue:SetJustifyH("LEFT")
-    detail.hero.scoreValue:SetScale(1.45)
+    detail.hero.scoreValue:SetWordWrap(false)
 
     detail.hero.bestRun = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     detail.hero.bestRun:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -8)
     detail.hero.bestRun:SetJustifyH("LEFT")
     detail.hero.bestRun:Hide()
 
-    detail.hero.name:ClearAllPoints()
-    detail.hero.name:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -14)
-
     detail.hero.mainScore = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.name, "BOTTOMLEFT", 0, -4)
+    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -2)
     detail.hero.mainScore:SetJustifyH("LEFT")
 
     detail.hero.infoButton = CreateFrame("Button", nil, detail.hero)
-    detail.hero.infoButton:SetSize(18, 18)
-    detail.hero.infoButton:SetPoint("TOPRIGHT", -12, -12)
-    detail.hero.infoButton.background = detail.hero.infoButton:CreateTexture(nil, "BACKGROUND")
-    detail.hero.infoButton.background:SetAllPoints()
-    detail.hero.infoButton.background:SetTexture(solidTexture)
-    detail.hero.infoButton.background:SetVertexColor(1, 1, 1, 0.07)
-    detail.hero.infoButton.highlight = detail.hero.infoButton:CreateTexture(nil, "ARTWORK")
-    detail.hero.infoButton.highlight:SetAllPoints()
-    detail.hero.infoButton.highlight:SetTexture(solidTexture)
-    detail.hero.infoButton.highlight:SetVertexColor(1, 1, 1, 0.06)
-    detail.hero.infoButton.highlight:Hide()
-    detail.hero.infoButton.text = detail.hero.infoButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    detail.hero.infoButton.text:SetPoint("CENTER", 0, 0)
-    detail.hero.infoButton.text:SetText("(i)")
+    detail.hero.infoButton:SetSize(20, 20)
+    detail.hero.infoButton:SetPoint("TOPRIGHT", -10, -10)
+    detail.hero.infoButton:SetNormalTexture("Interface\\Common\\help-i")
+    detail.hero.infoButton:SetHighlightTexture("Interface\\Common\\help-i", "ADD")
+    detail.hero.infoButton:SetPushedTexture("Interface\\Common\\help-i")
+    detail.hero.infoButton:GetNormalTexture():SetAllPoints()
+    detail.hero.infoButton:GetHighlightTexture():SetAllPoints()
+    detail.hero.infoButton:GetHighlightTexture():SetAlpha(0.2)
+    detail.hero.infoButton:GetPushedTexture():SetAllPoints()
+    detail.hero.infoButton:GetPushedTexture():SetVertexColor(0.9, 0.9, 0.9, 1)
     detail.hero.infoButton:SetScript("OnEnter", function(self)
-        self.highlight:Show()
         ShowHeroInfoTooltip(self, self.record)
     end)
     detail.hero.infoButton:SetScript("OnLeave", function(self)
-        self.highlight:Hide()
         GameTooltip_Hide()
     end)
 
@@ -831,7 +1075,6 @@ function DetailPanel:Create(frame)
 
     detail.summarySection = CreateSection(detail, ns.L.DETAIL_CHARACTER)
     detail.summaryRows = {
-        CreateValueRow(detail.summarySection, ns.L.ROLE),
         CreateValueRow(detail.summarySection, ns.L.SPEC),
         CreateValueRow(detail.summarySection, ns.L.ITEM_LEVEL),
         CreateValueRow(detail.summarySection, ns.L.DETAIL_ASTRALKEYS_KEY)
@@ -840,7 +1083,6 @@ function DetailPanel:Create(frame)
     detail.summaryRows[1]:SetPoint("TOPLEFT", detail.summarySection.divider, "BOTTOMLEFT", 0, -6)
     detail.summaryRows[2]:SetPoint("TOPLEFT", detail.summaryRows[1], "BOTTOMLEFT", 0, -4)
     detail.summaryRows[3]:SetPoint("TOPLEFT", detail.summaryRows[2], "BOTTOMLEFT", 0, -4)
-    detail.summaryRows[4]:SetPoint("TOPLEFT", detail.summaryRows[3], "BOTTOMLEFT", 0, -4)
 
     detail.liveRunSection = CreateSection(detail, ns.L.DETAIL_LIVE_RUN)
     detail.liveRunRows = {
@@ -853,7 +1095,39 @@ function DetailPanel:Create(frame)
     detail.liveRunRows[2]:SetPoint("TOPLEFT", detail.liveRunRows[1], "BOTTOMLEFT", 0, -4)
     detail.liveRunRows[3]:SetPoint("TOPLEFT", detail.liveRunRows[2], "BOTTOMLEFT", 0, -4)
 
-    detail.keySection = CreateSection(detail, ns.L.DETAIL_YOUR_KEY)
+    detail.keySection = CreateSection(detail, ns.L.DETAIL_AVAILABLE_KEYS)
+    detail.keyTabBar = CreateFrame("Frame", nil, detail.keySection)
+    detail.keyTabBar:SetHeight(20)
+    detail.keyTabBar.buttons = {
+        CreateKeyTabButton(detail.keyTabBar, ns.L.DETAIL_YOUR_KEY, "your"),
+        CreateKeyTabButton(detail.keyTabBar, ns.L.DETAIL_THEIR_KEY, "their")
+    }
+    detail.keyTabs = {
+        your = detail.keyTabBar.buttons[1],
+        their = detail.keyTabBar.buttons[2]
+    }
+    detail.keyTabInfoButtons = {
+        your = CreateInlineInfoButton(detail.keyTabBar),
+        their = CreateInlineInfoButton(detail.keyTabBar)
+    }
+
+    for index = 1, #detail.keyTabBar.buttons do
+        local button = detail.keyTabBar.buttons[index]
+        button.detail = detail
+        button:SetScript("OnClick", OnKeyTabButtonClicked)
+        button:SetScript("OnEnter", function(self)
+            ShowKeyTabTooltip(self)
+        end)
+        button:SetScript("OnLeave", GameTooltip_Hide)
+    end
+
+    for _, infoButton in pairs(detail.keyTabInfoButtons) do
+        infoButton:SetScript("OnEnter", function(self)
+            ShowKeyTabTooltip(self)
+        end)
+        infoButton:SetScript("OnLeave", GameTooltip_Hide)
+    end
+
     detail.keyCard = CreateFrame("Frame", nil, detail.keySection)
     detail.keyCard.background = detail.keyCard:CreateTexture(nil, "BACKGROUND")
     detail.keyCard.background:SetAllPoints()
@@ -900,7 +1174,7 @@ function DetailPanel:Create(frame)
     detail.keyRows[4]:SetPoint("TOPLEFT", detail.keyRows[3], "BOTTOMLEFT", 0, -4)
 
     detail.keyEmpty = detail.keySection:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-    detail.keyEmpty:SetPoint("TOPLEFT", detail.keySection.divider, "BOTTOMLEFT", 0, -6)
+    detail.keyEmpty:SetPoint("TOPLEFT", detail.keyTabBar, "BOTTOMLEFT", 0, -6)
     detail.keyEmpty:SetJustifyH("LEFT")
     detail.keyEmpty:SetText(ns.L.NO_CURRENT_KEY)
 
@@ -992,12 +1266,15 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
     detail.hero:ClearAllPoints()
     detail.hero:SetPoint("TOPLEFT", detail, "TOPLEFT", inset, -inset)
     detail.hero:SetPoint("TOPRIGHT", detail, "TOPRIGHT", -inset, -inset)
-    detail.hero:SetHeight(140)
+    detail.hero:SetHeight(104)
 
-    detail.hero.scoreLabel:SetWidth(contentWidth - 36)
-    detail.hero.scoreValue:SetWidth(contentWidth - 36)
-    detail.hero.name:SetWidth(contentWidth - 42)
-    detail.hero.mainScore:SetWidth(contentWidth - 42)
+    detail.hero.roleBadge:ClearAllPoints()
+    detail.hero.roleBadge:SetPoint("TOPLEFT", detail.hero, "TOPLEFT", 14, -12)
+
+    detail.hero.scoreLabel:SetWidth(contentWidth - 28)
+    detail.hero.scoreValue:SetWidth(contentWidth - 28)
+    detail.hero.name:SetWidth(contentWidth - 62)
+    detail.hero.mainScore:SetWidth(contentWidth - 28)
     detail.hero.emptyState:SetWidth(contentWidth - 20)
 
     detail.summarySection:ClearAllPoints()
@@ -1030,10 +1307,33 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
         row.value:SetWidth(contentWidth - labelWidth - 12)
     end
 
+    detail.keyTabBar:ClearAllPoints()
+    detail.keyTabBar:SetPoint("TOPLEFT", detail.keySection.divider, "BOTTOMLEFT", 0, -6)
+    detail.keyTabBar:SetPoint("TOPRIGHT", detail.keySection.divider, "BOTTOMRIGHT", 0, -6)
+
+    local tabGap = 4
+    local tabWidth = math.floor((contentWidth - tabGap) / 2)
+    detail.keyTabs.your:ClearAllPoints()
+    detail.keyTabs.your:SetPoint("TOPLEFT", detail.keyTabBar, "TOPLEFT", 0, 0)
+    detail.keyTabs.your:SetPoint("BOTTOMLEFT", detail.keyTabBar, "BOTTOMLEFT", 0, 0)
+    detail.keyTabs.your:SetWidth(tabWidth)
+
+    detail.keyTabs.their:ClearAllPoints()
+    detail.keyTabs.their:SetPoint("TOPLEFT", detail.keyTabs.your, "TOPRIGHT", tabGap, 0)
+    detail.keyTabs.their:SetPoint("BOTTOMRIGHT", detail.keyTabBar, "BOTTOMRIGHT", 0, 0)
+
+    detail.keyTabInfoButtons.your:ClearAllPoints()
+    detail.keyTabInfoButtons.your:SetPoint("RIGHT", detail.keyTabs.your, "RIGHT", -4, 0)
+    detail.keyTabInfoButtons.your:SetFrameLevel(detail.keyTabs.your:GetFrameLevel() + 5)
+
+    detail.keyTabInfoButtons.their:ClearAllPoints()
+    detail.keyTabInfoButtons.their:SetPoint("RIGHT", detail.keyTabs.their, "RIGHT", -4, 0)
+    detail.keyTabInfoButtons.their:SetFrameLevel(detail.keyTabs.their:GetFrameLevel() + 5)
+
     detail.keyCard:ClearAllPoints()
-    detail.keyCard:SetPoint("TOPLEFT", detail.keySection.divider, "BOTTOMLEFT", 0, -6)
-    detail.keyCard:SetPoint("TOPRIGHT", detail.keySection.divider, "BOTTOMRIGHT", 0, -6)
-    detail.keyCard:SetHeight(120)
+    detail.keyCard:SetPoint("TOPLEFT", detail.keyTabBar, "BOTTOMLEFT", 0, -6)
+    detail.keyCard:SetPoint("TOPRIGHT", detail.keyTabBar, "BOTTOMRIGHT", 0, -6)
+    detail.keyCard:SetHeight(128)
     detail.keyCard.name:SetWidth(contentWidth - 40)
     detail.keyCard.level:SetWidth(contentWidth - 40)
 
@@ -1102,9 +1402,11 @@ function DetailPanel:Refresh(panel)
     end
 
     local detail = frame.detail
+    detail.panel = panel
     local record = panel.selectedFullName and ns.Data:GetRecord(panel.selectedFullName)
     if not record then
         detail.hero.name:Hide()
+        detail.hero.roleBadge:Hide()
         detail.hero.scoreLabel:Hide()
         detail.hero.scoreValue:Hide()
         detail.hero.bestRun:Hide()
@@ -1142,22 +1444,65 @@ function DetailPanel:Refresh(panel)
     local scoreColor = ns:GetScoreColor(record.currentScore)
     local classR, classG, classB = classColor:GetRGB()
     local scoreR, scoreG, scoreB = scoreColor:GetRGB()
-    local keyContext = ns.Data:GetCurrentKeyContext() or {}
-    local bestCurrentKeyProfile = keyContext.mapID and FindDungeonProfile(record, keyContext.mapID) or nil
+    local hasAstralKeys = ns.AstralKeys and ns.AstralKeys:IsAvailable()
+    local playerRecord = ns.playerFullName and ns.Data:GetRecord(ns.playerFullName) or nil
+    local yourKeyContext = ns.Data:GetCurrentKeyContext() or {}
+    local reportedKey = record.reportedKey
+    local isBrowsingSelf = record.fullName == ns.playerFullName
+    local canShowTheirKey = not isBrowsingSelf
+        and playerRecord
+        and reportedKey
+        and reportedKey.mapID
+        and reportedKey.level
+    local theirKeyTooltip = nil
+    if isBrowsingSelf then
+        theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_SELF
+    elseif not hasAstralKeys then
+        theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_ASTRALKEYS
+    elseif not playerRecord then
+        theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_NO_SELF
+    elseif not canShowTheirKey then
+        theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_NO_KEY
+    end
+    local activeKeyTab = ResolveActiveKeyTab(detail, canShowTheirKey)
+    local selectedKeyContext = activeKeyTab == "their" and reportedKey or yourKeyContext
+    local projectionRecord = activeKeyTab == "their" and playerRecord or record
+    local selectedBestKeyProfile = projectionRecord and selectedKeyContext.mapID and FindDungeonProfile(projectionRecord, selectedKeyContext.mapID) or nil
+    local selectedKeyStatus = nil
+
+    if projectionRecord and selectedKeyContext.mapID and selectedKeyContext.level then
+        selectedKeyStatus = ns.Data:GetRecordCurrentKeyStatus(projectionRecord, selectedKeyContext.mapID, selectedKeyContext.level)
+    end
+
+    detail.keyTabInfoButtons.your.tooltipTitle = ns.L.DETAIL_YOUR_KEY
+    detail.keyTabInfoButtons.your.tooltipText = ns.L.DETAIL_KEY_SUBTITLE_YOUR
+    detail.keyTabInfoButtons.their.tooltipTitle = ns.L.DETAIL_THEIR_KEY
+    detail.keyTabInfoButtons.their.tooltipText = canShowTheirKey and ns.L.DETAIL_KEY_SUBTITLE_THEIR or theirKeyTooltip
+    detail.keyTabs.your.tooltipTitle = ns.L.DETAIL_YOUR_KEY
+    detail.keyTabs.your.tooltipText = ns.L.DETAIL_KEY_SUBTITLE_YOUR
+    detail.keyTabs.their.tooltipTitle = ns.L.DETAIL_THEIR_KEY
+    detail.keyTabs.their.tooltipText = canShowTheirKey and ns.L.DETAIL_KEY_SUBTITLE_THEIR or theirKeyTooltip
+
+    UpdateKeyTabButton(detail.keyTabs.your, activeKeyTab == "your", true)
+    UpdateKeyTabButton(detail.keyTabs.their, activeKeyTab == "their", canShowTheirKey)
 
     detail.hero.name:Show()
+    detail.hero.roleBadge:Show()
     detail.hero.scoreLabel:Show()
     detail.hero.scoreValue:Show()
     detail.hero.bestRun:Hide()
     detail.hero.infoButton:Show()
     detail.hero.emptyState:Hide()
     detail.hero.infoButton.record = record
+    detail.hero.roleBadge.record = record
 
     detail.hero.tint:SetVertexColor(classR, classG, classB, 0.08)
     detail.hero.topAccent:SetVertexColor(classR, classG, classB, 0.85)
 
     detail.hero.name:SetText(ns:GetRecordDisplayName(record))
     detail.hero.name:SetTextColor(classR, classG, classB)
+    detail.hero.roleBadge.icon:SetAtlas(ns:GetRoleAtlas(record.roleBucket))
+    detail.hero.roleBadge.icon:SetSize(14, 14)
     detail.hero.scoreValue:SetText(tostring(record.currentScore or 0))
     detail.hero.scoreValue:SetTextColor(scoreR, scoreG, scoreB)
 
@@ -1170,19 +1515,10 @@ function DetailPanel:Refresh(panel)
         detail.hero.mainScore:Hide()
     end
 
-    local hasAstralKeys = ns.AstralKeys and ns.AstralKeys:IsAvailable()
-    local reportedKeyRow = detail.summaryRows[4]
-    SetSectionHeight(detail.summarySection, hasAstralKeys and 110 or 90)
+    local reportedKeyRow = detail.summaryRows[3]
+    SetSectionHeight(detail.summarySection, hasAstralKeys and 90 or 70)
 
-    local roleRow = detail.summaryRows[1]
-    roleRow.value:SetText(("%s %s (%s)"):format(
-        ns:GetRoleMarkup(record.roleBucket),
-        ns:GetRoleLabel(record.roleBucket),
-        BuildRoleSourceLabel(record)
-    ))
-    roleRow.value:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-
-    local specRow = detail.summaryRows[2]
+    local specRow = detail.summaryRows[1]
     if record.specName then
         specRow.value:SetText(("%s %s (%s)"):format(
             BuildTextureMarkup(record.specIcon, 16),
@@ -1195,7 +1531,7 @@ function DetailPanel:Refresh(panel)
         specRow.value:SetTextColor(GRAY_FONT_COLOR:GetRGB())
     end
 
-    local itemLevelRow = detail.summaryRows[3]
+    local itemLevelRow = detail.summaryRows[2]
     if ns.Config:Get("showItemLevel") then
         local itemLevelText = record.equippedItemLevel and (record.itemLevelIsStale and ns:GetItemLevelText(record.equippedItemLevel) or ns:GetColoredItemLevelText(record.equippedItemLevel)) or ns.L.UNKNOWN_ITEM_LEVEL
         itemLevelRow.value:SetText(("%s (%s)"):format(itemLevelText, BuildItemLevelSourceLabel(record)))
@@ -1207,7 +1543,6 @@ function DetailPanel:Refresh(panel)
 
     reportedKeyRow:SetShown(hasAstralKeys)
     if hasAstralKeys then
-        local reportedKey = record.reportedKey
         if reportedKey and reportedKey.level and reportedKey.mapID then
             local texture = reportedKey.texture or reportedKey.backgroundTexture or dungeonFallbackTexture
             reportedKeyRow.value:SetText(BuildKeystoneDisplayText(texture, reportedKey.level, reportedKey.mapName))
@@ -1244,28 +1579,41 @@ function DetailPanel:Refresh(panel)
         end
     end
 
-    if keyContext.mapID and keyContext.level then
-        SetSectionHeight(detail.keySection, 146)
+    if projectionRecord and selectedKeyContext.mapID and selectedKeyContext.level then
+        local selectedKeyName = selectedKeyContext.mapName
+        if (not selectedKeyName or selectedKeyName == "") and selectedBestKeyProfile and selectedBestKeyProfile.dungeon then
+            local dungeon = selectedBestKeyProfile.dungeon
+            selectedKeyName = dungeon.shortNameLocale or dungeon.shortName or dungeon.name
+        end
+
+        local selectedKeyTexture = selectedKeyContext.texture
+            or selectedKeyContext.backgroundTexture
+            or (selectedBestKeyProfile and GetDungeonTexture(selectedBestKeyProfile.dungeon))
+            or dungeonFallbackTexture
+
+        SetSectionHeight(detail.keySection, 180)
         detail.keyCard:Show()
         detail.keyEmpty:Hide()
-        detail.keyCard.icon:SetTexture(keyContext.texture or keyContext.backgroundTexture or dungeonFallbackTexture)
-        detail.keyCard.name:SetText(("+%d %s"):format(keyContext.level, keyContext.mapName or ns.L.UNKNOWN))
-        detail.keyCard.name:SetTextColor(GetKeystoneLevelColor(keyContext.level):GetRGB())
+        detail.keyCard.icon:SetTexture(selectedKeyTexture)
+        detail.keyCard.name:SetText(("+%d %s"):format(selectedKeyContext.level, selectedKeyName or ns.L.UNKNOWN))
+        detail.keyCard.name:SetTextColor(GetKeystoneLevelColor(selectedKeyContext.level):GetRGB())
         detail.keyCard.level:SetText("")
-        detail.keyRows[1].value:SetText(BuildRunSummaryText(bestCurrentKeyProfile))
-        detail.keyRows[1].value:SetTextColor(GetRunStatusColor(bestCurrentKeyProfile and bestCurrentKeyProfile.chests or 0):GetRGB())
-        detail.keyRows[2].value:SetText(BuildCurrentKeyStatusLabel(record.currentKeyStatus))
+        detail.keyRows[1].value:SetText(BuildRunSummaryText(selectedBestKeyProfile))
+        detail.keyRows[1].value:SetTextColor(GetRunStatusColor(selectedBestKeyProfile and selectedBestKeyProfile.chests or 0):GetRGB())
+        detail.keyRows[2].value:SetText(BuildCurrentKeyStatusLabel(selectedKeyStatus))
         detail.keyRows[2].value:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-        detail.keyRows[3].value:SetText(BuildKeyScoreImpactText(bestCurrentKeyProfile, keyContext.level, true))
-        detail.keyRows[3].value:SetTextColor(GetKeyScoreImpactColor(bestCurrentKeyProfile, keyContext.level, true):GetRGB())
-        detail.keyRows[4].value:SetText(BuildKeyScoreImpactText(bestCurrentKeyProfile, keyContext.level, false))
-        detail.keyRows[4].value:SetTextColor(GetKeyScoreImpactColor(bestCurrentKeyProfile, keyContext.level, false):GetRGB())
+        detail.keyRows[3].value:SetText(BuildKeyScoreImpactText(selectedBestKeyProfile, selectedKeyContext.level, true))
+        detail.keyRows[3].value:SetTextColor(GetKeyScoreImpactColor(selectedBestKeyProfile, selectedKeyContext.level, true):GetRGB())
+        detail.keyRows[4].value:SetText(BuildKeyScoreImpactText(selectedBestKeyProfile, selectedKeyContext.level, false))
+        detail.keyRows[4].value:SetTextColor(GetKeyScoreImpactColor(selectedBestKeyProfile, selectedKeyContext.level, false):GetRGB())
     else
-        SetSectionHeight(detail.keySection, 38)
+        SetSectionHeight(detail.keySection, 62)
         detail.keyCard:Hide()
         detail.keyEmpty:Show()
+        detail.keyEmpty:SetText(ns.L.NO_CURRENT_KEY)
     end
 
+    local selectedKeyBucket = selectedKeyContext.level and GetDungeonBucketKey(selectedKeyContext.level) or nil
     local visibleDungeonRows = math.min(#detail.dungeonRows, #(record.sortedDungeons or {}))
     if visibleDungeonRows > 0 then
         SetSectionHeight(detail.dungeonSection, 44 + (visibleDungeonRows * 20))
@@ -1278,16 +1626,16 @@ function DetailPanel:Refresh(panel)
             if index <= visibleDungeonRows and dungeonProfile and dungeonProfile.dungeon then
                 local bucketKey = GetDungeonBucketKey(dungeonProfile.level)
                 local dungeon = dungeonProfile.dungeon
-                local isCurrentKeyRow = keyContext.mapID and (
-                    dungeon.keystone_instance == keyContext.mapID
-                    or dungeon.id == keyContext.mapID
-                    or dungeon.instance_map_id == keyContext.mapID
-                    or dungeon.index == keyContext.mapID
+                local isCurrentKeyRow = selectedKeyContext.mapID and (
+                    dungeon.keystone_instance == selectedKeyContext.mapID
+                    or dungeon.id == selectedKeyContext.mapID
+                    or dungeon.instance_map_id == selectedKeyContext.mapID
+                    or dungeon.index == selectedKeyContext.mapID
                 ) or false
 
                 row:Show()
                 row.record = record
-                row.keyContext = keyContext
+                row.keyContext = selectedKeyContext
                 row.dungeonProfile = dungeonProfile
                 row.isCurrentKeyRow = isCurrentKeyRow
                 row:SetHeight(20)
@@ -1307,9 +1655,15 @@ function DetailPanel:Refresh(panel)
 
                 for cellIndex = 1, #row.cells do
                     local cell = row.cells[cellIndex]
+                    cell.marker:Hide()
+                    SetMatrixCellTested(cell, isCurrentKeyRow and selectedKeyBucket and cell.bucketKey == selectedKeyBucket)
                     if bucketKey and cell.bucketKey == bucketKey then
                         cell.value:SetText(dungeonProfile.level and tostring(dungeonProfile.level) or "-")
                         cell.value:SetTextColor(GetRunStatusColor(dungeonProfile.chests or 0):GetRGB())
+                    elseif DoesDungeonMeetBucket(dungeonProfile, cell.bucketKey) then
+                        cell.value:SetText("")
+                        cell.marker:SetVertexColor(NORMAL_FONT_COLOR:GetRGB())
+                        cell.marker:Show()
                     else
                         cell.value:SetText("-")
                         cell.value:SetTextColor(GRAY_FONT_COLOR:GetRGB())
