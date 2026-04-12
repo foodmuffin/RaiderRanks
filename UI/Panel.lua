@@ -749,9 +749,23 @@ function Panel:CreateCheckButton(parent, label, tooltip, getter, setter)
     local button = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
     button.Text:SetText(label)
     button.tooltipText = tooltip
+    if tooltip and tooltip ~= "" and button.SetHitRectInsets then
+        button:SetHitRectInsets(0, -math.ceil(button.Text:GetStringWidth() or 0), 0, 0)
+    end
     button:SetScript("OnClick", function(self)
         setter(self:GetChecked())
     end)
+    button:SetScript("OnEnter", function(self)
+        if not self.tooltipText or self.tooltipText == "" then
+            return
+        end
+
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(self.Text and self.Text:GetText() or "", HIGHLIGHT_FONT_COLOR:GetRGB())
+        GameTooltip:AddLine(self.tooltipText, NORMAL_FONT_COLOR:GetRGB(), true)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", GameTooltip_Hide)
     button.GetCheckedState = getter
     return button
 end

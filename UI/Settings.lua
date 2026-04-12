@@ -6,22 +6,24 @@ local SettingsPanel = {
 
 ns.Settings = SettingsPanel
 
-local function CreateWrappedText(parent, template, anchor, offsetY)
+local settingsScrollBarInset = 6
+local settingsScrollBarGap = 6
+
+local function CreateWrappedText(parent, template, anchor, offsetY, offsetX, width)
     local fontString = parent:CreateFontString(nil, "ARTWORK", template)
-    fontString:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY)
-    fontString:SetWidth(620)
+    fontString:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", offsetX or 0, offsetY)
+    fontString:SetWidth(width or 620)
     fontString:SetJustifyH("LEFT")
     fontString:SetJustifyV("TOP")
     fontString:SetWordWrap(true)
     return fontString
 end
 
-local function CreateCheckbox(parent, anchor, offsetY, label, settingKey, tooltip)
+local function CreateCheckbox(parent, anchor, offsetY, label, settingKey)
     local button = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
     button:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY)
     button.Text:SetText(label)
     button.settingKey = settingKey
-    button.tooltipText = tooltip
     button:SetScript("OnClick", function(self)
         ns.Config:Set(self.settingKey, not not self:GetChecked())
     end)
@@ -41,6 +43,46 @@ local function SetCheckboxEnabled(button, enabled)
             button.Text:SetTextColor(GRAY_FONT_COLOR:GetRGB())
         end
     end
+end
+
+function SettingsPanel:UpdateScrollBounds()
+    local panel = self.panel
+    if not panel
+        or not panel:IsShown()
+        or not panel.scrollBox
+        or not panel.scrollContent
+        or not panel.scrollContentBottom then
+        return
+    end
+
+    local contentTop = panel.scrollContent:GetTop()
+    local contentBottom = panel.scrollContentBottom:GetBottom()
+    if not contentTop or not contentBottom then
+        return
+    end
+
+    local contentHeight = math.max(1, math.ceil(contentTop - contentBottom))
+    local scrollBoxWidth = panel.scrollBox:GetWidth() or 0
+    panel.scrollContent:SetHeight(contentHeight)
+    if scrollBoxWidth > 0 then
+        panel.scrollContent:SetWidth(math.max(1, scrollBoxWidth - 18))
+    end
+
+    if panel.scrollBox.FullUpdate then
+        panel.scrollBox:FullUpdate(true)
+    end
+end
+
+function SettingsPanel:QueueScrollUpdate()
+    if self.scrollUpdateQueued then
+        return
+    end
+
+    self.scrollUpdateQueued = true
+    C_Timer.After(0, function()
+        SettingsPanel.scrollUpdateQueued = false
+        SettingsPanel:UpdateScrollBounds()
+    end)
 end
 
 function SettingsPanel:RefreshRaiderIOMetadata()
@@ -135,6 +177,7 @@ function SettingsPanel:RefreshAll()
     self:RefreshGuildSyncMetadata()
     self:RefreshRaiderIOMetadata()
     self:RefreshAstralKeysMetadata()
+    self:QueueScrollUpdate()
 end
 
 function SettingsPanel:Open()
@@ -159,16 +202,50 @@ function SettingsPanel:Create()
     local panel = CreateFrame("Frame")
     self.panel = panel
     panel.name = ns.L.ADDON_TITLE
+    panel.scrollBox = CreateFrame("Frame", nil, panel, "WowScrollBox")
+    panel.scrollBox:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
+    panel.scrollBox:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16)
 
-    panel.title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    panel.title:SetPoint("TOPLEFT", 16, -16)
+    panel.scrollBar = CreateFrame("EventFrame", nil, panel.scrollBox, "MinimalScrollBar")
+    panel.scrollBar:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -settingsScrollBarInset, -16)
+    panel.scrollBar:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -settingsScrollBarInset, 16)
+
+    panel.scrollBox:SetPoint("TOPRIGHT", panel.scrollBar, "TOPLEFT", -settingsScrollBarGap, 0)
+    panel.scrollBox:SetPoint("BOTTOMRIGHT", panel.scrollBar, "BOTTOMLEFT", -settingsScrollBarGap, 0)
+
+    if panel.scrollBox.SetInterpolateScroll then
+        panel.scrollBox:SetInterpolateScroll(true)
+    end
+    if panel.scrollBar.SetInterpolateScroll then
+        panel.scrollBar:SetInterpolateScroll(true)
+    end
+    if panel.scrollBar.SetHideIfUnscrollable then
+        panel.scrollBar:SetHideIfUnscrollable(true)
+    end
+
+    panel.scrollContent = CreateFrame("Frame", nil, panel.scrollBox)
+    panel.scrollContent:SetPoint("TOPLEFT", panel.scrollBox, "TOPLEFT", 0, 0)
+    panel.scrollContent:SetPoint("TOPRIGHT", panel.scrollBox, "TOPRIGHT", 0, 0)
+    panel.scrollContent:SetHeight(1)
+    panel.scrollContent.scrollable = true
+
+    local view = CreateScrollBoxLinearView()
+    if view.SetPanExtent then
+        view:SetPanExtent(60)
+    end
+    ScrollUtil.InitScrollBoxWithScrollBar(panel.scrollBox, panel.scrollBar, view)
+
+    local content = panel.scrollContent
+
+    panel.title = content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    panel.title:SetPoint("TOPLEFT", 0, 0)
     panel.title:SetText(ns.L.SETTINGS_HEADER)
 
-    panel.version = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    panel.version = content:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     panel.version:SetPoint("TOPLEFT", panel.title, "BOTTOMLEFT", 0, -12)
     panel.version:SetText(("%s: %s"):format(VERSION or "Version", ns.version))
 
-    panel.description = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    panel.description = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     panel.description:SetPoint("TOPLEFT", panel.version, "BOTTOMLEFT", 0, -12)
     panel.description:SetWidth(620)
     panel.description:SetJustifyH("LEFT")
@@ -176,15 +253,15 @@ function SettingsPanel:Create()
     panel.description:SetWordWrap(true)
     panel.description:SetText(ns.L.ADDON_DESCRIPTION)
 
-    panel.panelHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    panel.panelHeader = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     panel.panelHeader:SetPoint("TOPLEFT", panel.description, "BOTTOMLEFT", 0, -20)
     panel.panelHeader:SetText(ns.L.SETTINGS_PANEL_HEADER)
 
-    panel.panelDescription = CreateWrappedText(panel, "GameFontHighlightSmall", panel.panelHeader, -10)
+    panel.panelDescription = CreateWrappedText(content, "GameFontHighlightSmall", panel.panelHeader, -10)
     panel.panelDescription:SetText(ns.L.SETTINGS_PANEL_DESCRIPTION)
 
     panel.groupByRoleToggle = CreateCheckbox(
-        panel,
+        content,
         panel.panelDescription,
         -12,
         ns.L.SETTING_GROUP_BY_ROLE,
@@ -192,23 +269,32 @@ function SettingsPanel:Create()
     )
 
     panel.completedRunsToggle = CreateCheckbox(
-        panel,
+        content,
         panel.groupByRoleToggle,
         -8,
         ns.L.SETTING_INCLUDE_COMPLETED_RUNS,
-        "includeCompletedRuns",
-        ns.L.INCLUDE_COMPLETED_RUNS_TOOLTIP
+        "includeCompletedRuns"
     )
 
-    panel.guildSyncHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    panel.guildSyncHeader:SetPoint("TOPLEFT", panel.completedRunsToggle, "BOTTOMLEFT", 0, -20)
+    panel.completedRunsDescription = CreateWrappedText(
+        content,
+        "GameFontHighlightSmall",
+        panel.completedRunsToggle,
+        -2,
+        30,
+        590
+    )
+    panel.completedRunsDescription:SetText(ns.L.SETTING_INCLUDE_COMPLETED_RUNS_DESCRIPTION)
+
+    panel.guildSyncHeader = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    panel.guildSyncHeader:SetPoint("TOPLEFT", panel.completedRunsDescription, "BOTTOMLEFT", -30, -20)
     panel.guildSyncHeader:SetText(ns.L.SETTINGS_GUILD_SYNC_HEADER)
 
-    panel.guildSyncDescription = CreateWrappedText(panel, "GameFontHighlightSmall", panel.guildSyncHeader, -10)
+    panel.guildSyncDescription = CreateWrappedText(content, "GameFontHighlightSmall", panel.guildSyncHeader, -10)
     panel.guildSyncDescription:SetText(ns.L.SETTINGS_GUILD_SYNC_DESCRIPTION)
 
     panel.guildSyncMaster = CreateCheckbox(
-        panel,
+        content,
         panel.guildSyncDescription,
         -12,
         ns.L.SETTING_ENABLE_GUILD_SYNC_CHANNEL,
@@ -216,7 +302,7 @@ function SettingsPanel:Create()
     )
 
     panel.newerWarningToggle = CreateCheckbox(
-        panel,
+        content,
         panel.guildSyncMaster,
         -8,
         ns.L.SETTING_SHOW_NEWER_RAIDERIO_WARNING,
@@ -224,37 +310,44 @@ function SettingsPanel:Create()
     )
 
     panel.liveActivityToggle = CreateCheckbox(
-        panel,
+        content,
         panel.newerWarningToggle,
         -8,
         ns.L.SETTING_SHOW_LIVE_KEY_ACTIVITY,
         "showLiveKeyActivity"
     )
 
-    panel.guildSyncSessionReporters = CreateWrappedText(panel, "GameFontHighlightSmall", panel.liveActivityToggle, -8)
+    panel.guildSyncSessionReporters = CreateWrappedText(content, "GameFontHighlightSmall", panel.liveActivityToggle, -8)
 
-    panel.guildSyncDisabled = CreateWrappedText(panel, "GameFontDisableSmall", panel.guildSyncSessionReporters, -6)
+    panel.guildSyncDisabled = CreateWrappedText(content, "GameFontDisableSmall", panel.guildSyncSessionReporters, -6)
     panel.guildSyncDisabled:SetText(ns.L.SETTINGS_GUILD_SYNC_DISABLED)
 
-    panel.raiderIOHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    panel.raiderIOHeader = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     panel.raiderIOHeader:SetPoint("TOPLEFT", panel.guildSyncDisabled, "BOTTOMLEFT", 0, -20)
     panel.raiderIOHeader:SetText(ns.L.SETTINGS_RAIDERIO_HEADER)
 
-    panel.raiderIOStatus = CreateWrappedText(panel, "GameFontHighlightSmall", panel.raiderIOHeader, -10)
-    panel.raiderIORegions = CreateWrappedText(panel, "GameFontHighlightSmall", panel.raiderIOStatus, -8)
-    panel.raiderIOVersion = CreateWrappedText(panel, "GameFontHighlightSmall", panel.raiderIORegions, -8)
-    panel.raiderIOTimestamp = CreateWrappedText(panel, "GameFontHighlightSmall", panel.raiderIOVersion, -8)
+    panel.raiderIOStatus = CreateWrappedText(content, "GameFontHighlightSmall", panel.raiderIOHeader, -10)
+    panel.raiderIORegions = CreateWrappedText(content, "GameFontHighlightSmall", panel.raiderIOStatus, -8)
+    panel.raiderIOVersion = CreateWrappedText(content, "GameFontHighlightSmall", panel.raiderIORegions, -8)
+    panel.raiderIOTimestamp = CreateWrappedText(content, "GameFontHighlightSmall", panel.raiderIOVersion, -8)
 
-    panel.astralKeysHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    panel.astralKeysHeader = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     panel.astralKeysHeader:SetPoint("TOPLEFT", panel.raiderIOTimestamp, "BOTTOMLEFT", 0, -20)
     panel.astralKeysHeader:SetText(ns.L.SETTINGS_ASTRALKEYS_HEADER)
 
-    panel.astralKeysStatus = CreateWrappedText(panel, "GameFontHighlightSmall", panel.astralKeysHeader, -10)
-    panel.astralKeysVersion = CreateWrappedText(panel, "GameFontHighlightSmall", panel.astralKeysStatus, -8)
-    panel.astralKeysEntries = CreateWrappedText(panel, "GameFontHighlightSmall", panel.astralKeysVersion, -8)
+    panel.astralKeysStatus = CreateWrappedText(content, "GameFontHighlightSmall", panel.astralKeysHeader, -10)
+    panel.astralKeysVersion = CreateWrappedText(content, "GameFontHighlightSmall", panel.astralKeysStatus, -8)
+    panel.astralKeysEntries = CreateWrappedText(content, "GameFontHighlightSmall", panel.astralKeysVersion, -8)
+
+    panel.scrollContentBottom = CreateFrame("Frame", nil, content)
+    panel.scrollContentBottom:SetSize(1, 1)
+    panel.scrollContentBottom:SetPoint("TOPLEFT", panel.astralKeysEntries, "BOTTOMLEFT", 0, -24)
 
     panel:SetScript("OnShow", function()
         SettingsPanel:RefreshAll()
+    end)
+    panel:SetScript("OnSizeChanged", function()
+        SettingsPanel:QueueScrollUpdate()
     end)
 
     local category = Settings.RegisterCanvasLayoutCategory(panel, ns.L.ADDON_TITLE, ns.L.ADDON_TITLE)
@@ -262,6 +355,7 @@ function SettingsPanel:Create()
     self.categoryID = category.ID
 
     self:RefreshAll()
+    self:QueueScrollUpdate()
 end
 
 ns:RegisterCallback("PLAYER_LOGIN", function()
