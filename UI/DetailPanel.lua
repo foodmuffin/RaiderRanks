@@ -9,6 +9,7 @@ local marbleTexture = "Interface\\FrameGeneral\\UI-Background-Marble"
 local fallbackSpecTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
 local solidTexture = "Interface\\Buttons\\WHITE8X8"
 local dungeonFallbackTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
+local warningIconAtlas = "services-icon-warning"
 
 local timedBucketKeys = {
     "timed20",
@@ -542,6 +543,35 @@ local function ShowKeyTabTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_TOP")
     GameTooltip:SetText(owner.tooltipTitle or owner.text:GetText() or "", titleR, titleG, titleB)
     GameTooltip:AddLine(owner.tooltipText, titleR, titleG, titleB, true)
+    GameTooltip:Show()
+end
+
+local function ShowScoreOverrideTooltip(owner, record)
+    if not owner
+        or not record
+        or record.scoreSource ~= "local"
+        or not record.raiderIOHasOverrideScore then
+        return
+    end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip:SetText(ns.L.DETAIL_SCORE_OVERRIDE_TITLE)
+    GameTooltip:AddLine(ns.L.DETAIL_SCORE_OVERRIDE_TOOLTIP, NORMAL_FONT_COLOR:GetRGB(), true)
+
+    if type(record.raiderIOOriginalScore) == "number" then
+        GameTooltip:AddDoubleLine(
+            ns.L.DETAIL_SCORE_OVERRIDE_ORIGINAL,
+            tostring(record.raiderIOOriginalScore),
+            1, 1, 1,
+            NORMAL_FONT_COLOR:GetRGB()
+        )
+    end
+
+    if record.raiderIOHasOverrideDungeonRuns then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(ns.L.DETAIL_SCORE_OVERRIDE_RUNS, NORMAL_FONT_COLOR:GetRGB(), true)
+    end
+
     GameTooltip:Show()
 end
 
@@ -1173,6 +1203,24 @@ function DetailPanel:Create(frame)
     detail.hero.scoreLabel:SetText(ns.L.DETAIL_SCORE)
     detail.hero.scoreLabel:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
 
+    detail.hero.scoreWarningButton = CreateFrame("Button", nil, detail.hero.scorePlate)
+    detail.hero.scoreWarningButton:SetSize(14, 14)
+    if detail.hero.scoreWarningButton.SetMotionScriptsWhileDisabled then
+        detail.hero.scoreWarningButton:SetMotionScriptsWhileDisabled(true)
+    end
+    if detail.hero.scoreWarningButton.SetHitRectInsets then
+        detail.hero.scoreWarningButton:SetHitRectInsets(-4, -4, -4, -4)
+    end
+    detail.hero.scoreWarningButton.icon = detail.hero.scoreWarningButton:CreateTexture(nil, "ARTWORK")
+    detail.hero.scoreWarningButton.icon:SetAllPoints()
+    detail.hero.scoreWarningButton.icon:SetAtlas(warningIconAtlas, true)
+    detail.hero.scoreWarningButton.icon:SetVertexColor(1, 0.82, 0.12, 1)
+    detail.hero.scoreWarningButton:SetScript("OnEnter", function(self)
+        ShowScoreOverrideTooltip(self, self.record)
+    end)
+    detail.hero.scoreWarningButton:SetScript("OnLeave", GameTooltip_Hide)
+    detail.hero.scoreWarningButton:Hide()
+
     detail.hero.scoreValue = detail.hero.scorePlate:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Huge3")
     detail.hero.scoreValue:SetJustifyH("CENTER")
     detail.hero.scoreValue:SetWordWrap(false)
@@ -1435,16 +1483,16 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
     detail.hero.scorePlate:SetWidth(scoreCardWidth)
 
     detail.hero.scoreLabel:ClearAllPoints()
-    detail.hero.scoreLabel:SetPoint("TOPLEFT", detail.hero.scorePlate, "TOPLEFT", 8, -4)
-    detail.hero.scoreLabel:SetPoint("TOPRIGHT", detail.hero.scorePlate, "TOPRIGHT", -8, -4)
+    detail.hero.scoreLabel:SetPoint("TOP", detail.hero.scorePlate, "TOP", 0, -4)
 
     detail.hero.scoreValue:ClearAllPoints()
-    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -2)
-    detail.hero.scoreValue:SetPoint("TOPRIGHT", detail.hero.scoreLabel, "BOTTOMRIGHT", 0, -2)
+    detail.hero.scoreValue:SetPoint("TOP", detail.hero.scoreLabel, "BOTTOM", 0, -2)
+
+    detail.hero.scoreWarningButton:ClearAllPoints()
+    detail.hero.scoreWarningButton:SetPoint("LEFT", detail.hero.scoreValue, "RIGHT", 4, 0)
 
     detail.hero.mainScore:ClearAllPoints()
-    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -2)
-    detail.hero.mainScore:SetPoint("TOPRIGHT", detail.hero.scoreValue, "BOTTOMRIGHT", 0, -2)
+    detail.hero.mainScore:SetPoint("TOP", detail.hero.scoreValue, "BOTTOM", 0, -2)
 
     detail.hero.emptyState:SetWidth(contentWidth - 20)
 
@@ -1581,6 +1629,7 @@ function DetailPanel:Refresh(panel)
         detail.hero.name:Hide()
         detail.hero.roleBadge:Hide()
         detail.hero.scoreLabel:Hide()
+        detail.hero.scoreWarningButton:Hide()
         detail.hero.scoreValue:Hide()
         detail.hero.bestRun:Hide()
         detail.hero.mainScore:Hide()
@@ -1683,6 +1732,8 @@ function DetailPanel:Refresh(panel)
     detail.hero.roleBadge.icon:SetSize(14, 14)
     detail.hero.scoreLabel:SetText(ns.L.DETAIL_SCORE)
     detail.hero.scoreLabel:SetTextColor(1, 0.84, 0.18)
+    detail.hero.scoreWarningButton.record = record
+    detail.hero.scoreWarningButton:SetShown(record.scoreSource == "local" and record.raiderIOHasOverrideScore)
     detail.hero.scoreValue:SetText(tostring(record.currentScore or 0))
     detail.hero.scoreValue:SetTextColor(scoreR, scoreG, scoreB)
 

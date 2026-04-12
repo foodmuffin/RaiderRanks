@@ -296,6 +296,9 @@ function Data:CreateBlankRecord(name, realm)
         currentScore = 0,
         previousScore = 0,
         mainCurrentScore = nil,
+        raiderIOHasOverrideScore = false,
+        raiderIOOriginalScore = nil,
+        raiderIOHasOverrideDungeonRuns = false,
         maxDungeonLevel = 0,
         timed20 = 0,
         timed15 = 0,
@@ -352,28 +355,36 @@ function Data:AddOrUpdateRecord(incoming)
 
     local identityKey = GetIdentityKey(fullName)
     local record = self.recordsByKey[fullName]
+    local matchedByIdentity = false
     if not record and identityKey then
         record = self.recordsByIdentityKey[identityKey]
+        matchedByIdentity = record ~= nil
     end
+
+    local resolvedFullName = fullName
+    local resolvedName = incoming.name
+    local resolvedRealm = incoming.realm
 
     if not record then
-        record = self:CreateBlankRecord(incoming.name, incoming.realm)
-    elseif record.fullName and record.fullName ~= fullName then
-        self.recordsByKey[record.fullName] = nil
+        record = self:CreateBlankRecord(resolvedName, resolvedRealm)
+    elseif matchedByIdentity and type(record.fullName) == "string" and record.fullName ~= "" then
+        resolvedFullName = record.fullName
+        resolvedName = record.name or resolvedName
+        resolvedRealm = record.realm or resolvedRealm
     end
 
-    self.recordsByKey[fullName] = record
+    self.recordsByKey[resolvedFullName] = record
     if identityKey then
         self.recordsByIdentityKey[identityKey] = record
     end
 
-    if type(incoming.name) == "string" then
-        record.name = incoming.name
+    if type(resolvedName) == "string" then
+        record.name = resolvedName
     end
-    if type(incoming.realm) == "string" then
-        record.realm = incoming.realm
+    if type(resolvedRealm) == "string" then
+        record.realm = resolvedRealm
     end
-    record.fullName = fullName
+    record.fullName = resolvedFullName
     record.classFile = incoming.classFile or record.classFile
     record.classID = incoming.classID or record.classID
     record.level = math.max(record.level or 0, incoming.level or 0)
@@ -512,6 +523,9 @@ function Data:ApplyRaiderIO(record)
     record.currentScore = 0
     record.previousScore = 0
     record.mainCurrentScore = nil
+    record.raiderIOHasOverrideScore = false
+    record.raiderIOOriginalScore = nil
+    record.raiderIOHasOverrideDungeonRuns = false
     record.maxDungeonLevel = 0
     record.timed20 = 0
     record.timed15 = 0
@@ -553,6 +567,9 @@ function Data:ApplyRaiderIO(record)
         record.currentScore = ns:Round(mythic.currentScore or 0)
         record.previousScore = ns:Round(mythic.previousScore or 0)
         record.mainCurrentScore = mythic.mainCurrentScore and ns:Round(mythic.mainCurrentScore) or nil
+        record.raiderIOHasOverrideScore = not not mythic.hasOverrideScore
+        record.raiderIOOriginalScore = mythic.originalCurrentScore and ns:Round(mythic.originalCurrentScore) or nil
+        record.raiderIOHasOverrideDungeonRuns = not not mythic.hasOverrideDungeonRuns
         record.maxDungeonLevel = mythic.maxDungeonLevel or 0
         record.sortedDungeons = mythic.sortedDungeons or {}
         PopulateRunSummary(record)

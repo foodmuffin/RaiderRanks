@@ -200,21 +200,22 @@ end
 
 function ns:GetNameRealmFromGUID(guid, fallbackFullName, fallbackRealm)
     local scrubbedFullName, scrubbedFallbackRealm = ns:ScrubSecretValues(fallbackFullName, fallbackRealm)
+    if type(guid) == "string" and guid ~= "" and type(GetPlayerInfoByGUID) == "function" then
+        local _, _, _, _, _, name, realm = GetPlayerInfoByGUID(guid)
+        if type(name) == "string" and not ns:IsSecretValue(name) then
+            if type(realm) ~= "string" or realm == "" then
+                local _, fallbackResolvedRealm = ns:SplitNameRealm(scrubbedFullName, scrubbedFallbackRealm or fallbackRealm)
+                realm = fallbackResolvedRealm or fallbackRealm or ns.playerRealm
+            end
+
+            return name, ns:TrimRealmName(realm)
+        end
+    end
+
     if type(scrubbedFullName) == "string" then
         local name, realm = ns:SplitNameRealm(scrubbedFullName, scrubbedFallbackRealm or fallbackRealm)
         if type(name) == "string" and type(realm) == "string" then
             return name, realm
-        end
-    end
-
-    if type(guid) == "string" and guid ~= "" and type(GetPlayerInfoByGUID) == "function" then
-        local _, _, _, _, _, name, realm = GetPlayerInfoByGUID(guid)
-        if type(name) == "string" and not ns:IsSecretValue(name) then
-            if realm == "" then
-                realm = fallbackRealm or ns.playerRealm
-            end
-
-            return name, ns:TrimRealmName(realm)
         end
     end
 
