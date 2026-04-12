@@ -213,16 +213,7 @@ function ns:IsDataStale(timestamp)
     return age ~= nil and age > self.inspectStaleAgeSeconds or false
 end
 
-function ns:GetDataAgeText(timestamp)
-    local age = self:GetDataAge(timestamp)
-    if not age then
-        return nil
-    end
-
-    if type(SecondsToTimeAbbrev) == "function" then
-        return SecondsToTimeAbbrev(age)
-    end
-
+local function FormatDataAgeFallback(self, age)
     if age >= 86400 then
         return self.L.CACHE_AGE_DAYS:format(math.floor(age / 86400))
     end
@@ -232,6 +223,22 @@ function ns:GetDataAgeText(timestamp)
     end
 
     return self.L.CACHE_AGE_MINUTES:format(math.max(1, math.floor(age / 60)))
+end
+
+function ns:GetDataAgeText(timestamp)
+    local age = self:GetDataAge(timestamp)
+    if not age then
+        return nil
+    end
+
+    if type(SecondsToTimeAbbrev) == "function" then
+        local ageText = SecondsToTimeAbbrev(age)
+        if type(ageText) == "string" and ageText ~= "" and not ageText:find("%%") then
+            return ageText
+        end
+    end
+
+    return FormatDataAgeFallback(self, age)
 end
 
 local function NormalizeColorResult(a, b, c)

@@ -16,11 +16,12 @@ local function CreateWrappedText(parent, template, anchor, offsetY)
     return fontString
 end
 
-local function CreateCheckbox(parent, anchor, offsetY, label, settingKey)
+local function CreateCheckbox(parent, anchor, offsetY, label, settingKey, tooltip)
     local button = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
     button:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY)
     button.Text:SetText(label)
     button.settingKey = settingKey
+    button.tooltipText = tooltip
     button:SetScript("OnClick", function(self)
         ns.Config:Set(self.settingKey, not not self:GetChecked())
     end)
@@ -195,7 +196,8 @@ function SettingsPanel:Create()
         panel.groupByRoleToggle,
         -8,
         ns.L.SETTING_INCLUDE_COMPLETED_RUNS,
-        "includeCompletedRuns"
+        "includeCompletedRuns",
+        ns.L.INCLUDE_COMPLETED_RUNS_TOOLTIP
     )
 
     panel.guildSyncHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")

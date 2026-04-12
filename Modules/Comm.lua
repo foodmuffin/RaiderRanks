@@ -128,6 +128,32 @@ local function SortDatasets(datasets)
     end)
 end
 
+local function BuildNewestManifestEntryMap(datasets)
+    local stampByKey = {}
+    local entryByKey = {}
+    if type(datasets) ~= "table" then
+        return stampByKey, entryByKey
+    end
+
+    for index = 1, #datasets do
+        local dataset = datasets[index]
+        local region = dataset and dataset.region
+        local dataType = dataset and dataset.dataType
+        local stamp = dataset and dataset.stamp or 0
+        if type(region) == "string" and region ~= ""
+            and type(dataType) == "string" and dataType ~= ""
+            and type(stamp) == "number" and stamp > 0 then
+            local key = ("%s|%s"):format(region, dataType)
+            if stamp > (stampByKey[key] or 0) then
+                stampByKey[key] = stamp
+                entryByKey[key] = dataset
+            end
+        end
+    end
+
+    return stampByKey, entryByKey
+end
+
 local function AddUniqueFullName(list, seen, fullName)
     if type(fullName) ~= "string" or fullName == "" or seen[fullName] then
         return
@@ -300,20 +326,14 @@ function Comm:GetNewerManifestEntries(manifestDatasets)
     end
 
     local localMetadata = ns:GetRaiderIOMetadata()
-    local localMap = {}
-    for index = 1, #(localMetadata.datasets or {}) do
-        local dataset = localMetadata.datasets[index]
-        local key = ("%s|%s"):format(dataset.region or "", dataset.dataType or "")
-        localMap[key] = dataset.stamp or 0
-    end
+    local localStampByKey = BuildNewestManifestEntryMap(localMetadata.datasets or {})
+    local remoteStampByKey, remoteEntryByKey = BuildNewestManifestEntryMap(manifestDatasets)
 
     local newer = {}
-    for index = 1, #manifestDatasets do
-        local dataset = manifestDatasets[index]
-        local key = ("%s|%s"):format(dataset.region or "", dataset.dataType or "")
-        local localStamp = localMap[key] or 0
-        if localStamp <= 0 or (dataset.stamp or 0) > localStamp then
-            newer[#newer + 1] = dataset
+    for key, remoteStamp in pairs(remoteStampByKey) do
+        local localStamp = localStampByKey[key]
+        if localStamp and remoteStamp > localStamp then
+            newer[#newer + 1] = remoteEntryByKey[key]
         end
     end
 
