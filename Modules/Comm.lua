@@ -155,12 +155,21 @@ local function BuildNewestManifestEntryMap(datasets)
 end
 
 local function AddUniqueFullName(list, seen, fullName)
-    if type(fullName) ~= "string" or fullName == "" or seen[fullName] then
+    if type(fullName) ~= "string" or fullName == "" then
         return
     end
 
-    seen[fullName] = true
+    local fullNameKey = ns:GetFullNameKey(fullName, ns.playerRealm) or fullName
+    if seen[fullNameKey] then
+        return
+    end
+
+    seen[fullNameKey] = true
     list[#list + 1] = fullName
+end
+
+local function GetCommIdentityKey(fullName)
+    return ns:GetFullNameKey(fullName, ns.playerRealm)
 end
 
 function Comm:IsEnabled()
@@ -341,16 +350,16 @@ function Comm:GetNewerManifestEntries(manifestDatasets)
     return newer
 end
 
-function Comm:UpdateNewerManifestState(senderFullName, manifestDatasets)
+function Comm:UpdateNewerManifestState(senderKey, senderFullName, manifestDatasets)
     local newerEntries = self:GetNewerManifestEntries(manifestDatasets)
     if #newerEntries > 0 then
-        self.newerManifestBySender[senderFullName] = {
+        self.newerManifestBySender[senderKey] = {
             senderFullName = senderFullName,
             observedAt = ns:GetCurrentTimestamp(),
             entries = newerEntries
         }
     else
-        self.newerManifestBySender[senderFullName] = nil
+        self.newerManifestBySender[senderKey] = nil
     end
 end
 
@@ -650,13 +659,9 @@ function Comm:DeserializeActivity(fields)
 end
 
 function Comm:IsSenderMatch(sender, payloadFullName)
-    if type(sender) ~= "string" or sender == "" or type(payloadFullName) ~= "string" or payloadFullName == "" then
-        return false
-    end
-
-    local payloadName, payloadRealm = ns:SplitNameRealm(payloadFullName, ns.playerRealm)
-    local senderName, senderRealm = ns:SplitNameRealm(sender, ns.playerRealm)
-    return payloadName == senderName and ns:TrimRealmName(payloadRealm) == ns:TrimRealmName(senderRealm)
+    local senderKey = GetCommIdentityKey(sender)
+    local payloadKey = GetCommIdentityKey(payloadFullName)
+    return type(senderKey) == "string" and senderKey == payloadKey
 end
 
 function Comm:GetSnapshot(fullName)
@@ -665,7 +670,8 @@ function Comm:GetSnapshot(fullName)
     end
 
     self:PruneSnapshots()
-    return self.sharedSnapshots and self.sharedSnapshots[fullName] or nil
+    local fullNameKey = GetCommIdentityKey(fullName)
+    return fullNameKey and self.sharedSnapshots and self.sharedSnapshots[fullNameKey] or nil
 end
 
 function Comm:GetActiveRun(fullName)
@@ -674,14 +680,15 @@ function Comm:GetActiveRun(fullName)
     end
 
     self:ClearExpiredActivity()
-    local sources = self.activeRunParticipants[fullName]
+    local fullNameKey = GetCommIdentityKey(fullName)
+    local sources = fullNameKey and self.activeRunParticipants[fullNameKey] or nil
     if not sources then
         return nil
     end
 
     local newest = nil
-    for senderFullName in pairs(sources) do
-        local activity = self.activeRunSources[senderFullName]
+    for senderKey in pairs(sources) do
+        local activity = self.activeRunSources[senderKey]
         if activity and (not newest or (activity.observedAt or 0) > (newest.observedAt or 0)) then
             newest = activity
         end
@@ -728,19 +735,24 @@ function Comm:GetSessionReporterCount()
 end
 
 function Comm:ClearActivitySource(senderFullName)
-    local activity = self.activeRunSources[senderFullName]
+    local senderKey = GetCommIdentityKey(senderFullName)
+    if not senderKey then
+        return false
+    end
+
+    local activity = self.activeRunSources[senderKey]
     if not activity then
         return false
     end
 
-    self.activeRunSources[senderFullName] = nil
+    self.activeRunSources[senderKey] = nil
     for index = 1, #(activity.members or {}) do
-        local fullName = activity.members[index]
-        local sources = self.activeRunParticipants[fullName]
+        local fullNameKey = GetCommIdentityKey(activity.members[index])
+        local sources = fullNameKey and self.activeRunParticipants[fullNameKey] or nil
         if sources then
-            sources[senderFullName] = nil
+            sources[senderKey] = nil
             if not next(sources) then
-                self.activeRunParticipants[fullName] = nil
+                self.activeRunParticipants[fullNameKey] = nil
             end
         end
     end
@@ -752,15 +764,24 @@ function Comm:StoreActivity(activity)
     self:ClearExpiredActivity()
     self:ClearActivitySource(activity.senderFullName)
 
-    self.activeRunSources[activity.senderFullName] = activity
+    local senderKey = GetCommIdentityKey(activity.senderFullName)
+    if not senderKey then
+        return
+    end
+
+    self.activeRunSources[senderKey] = activity
     for index = 1, #(activity.members or {}) do
-        local fullName = activity.members[index]
-        local sources = self.activeRunParticipants[fullName]
+        local fullNameKey = GetCommIdentityKey(activity.members[index])
+        local sources = fullNameKey and self.activeRunParticipants[fullNameKey] or nil
         if not sources then
             sources = {}
-            self.activeRunParticipants[fullName] = sources
+            if fullNameKey then
+                self.activeRunParticipants[fullNameKey] = sources
+            end
         end
-        sources[activity.senderFullName] = true
+        if fullNameKey then
+            sources[senderKey] = true
+        end
     end
 end
 
@@ -870,12 +891,17 @@ end
 
 function Comm:HandleSnapshot(snapshot)
     self.sharedSnapshots = self.sharedSnapshots or {}
-    self.sharedSnapshots[snapshot.senderFullName] = snapshot
-    if not self.sessionReporters[snapshot.senderFullName] then
-        self.sessionReporters[snapshot.senderFullName] = true
+    local senderKey = GetCommIdentityKey(snapshot.senderFullName)
+    if not senderKey then
+        return
+    end
+
+    self.sharedSnapshots[senderKey] = snapshot
+    if not self.sessionReporters[senderKey] then
+        self.sessionReporters[senderKey] = true
         self.sessionReporterCount = (self.sessionReporterCount or 0) + 1
     end
-    self:UpdateNewerManifestState(snapshot.senderFullName, snapshot.manifestDatasets)
+    self:UpdateNewerManifestState(senderKey, snapshot.senderFullName, snapshot.manifestDatasets)
     ns:FireCallback("COMM_SNAPSHOT_UPDATED", snapshot.senderFullName, snapshot)
     self:RequestDataRefresh("comm_snapshot")
 end
@@ -906,22 +932,31 @@ function Comm:HandleAddonMessage(prefix, message, channel, sender)
     local kind = fields[2]
     if kind == "S" then
         local snapshot = self:DeserializeSnapshot(fields)
+        local snapshotKey = snapshot and GetCommIdentityKey(snapshot.senderFullName) or nil
+        local playerKey = GetCommIdentityKey(ns.playerFullName)
         if snapshot
-            and snapshot.senderFullName ~= ns.playerFullName
+            and snapshotKey
+            and snapshotKey ~= playerKey
             and self:IsSenderMatch(sender, snapshot.senderFullName) then
             self:HandleSnapshot(snapshot)
         end
     elseif kind == "A" then
         local activity = self:DeserializeActivity(fields)
+        local activityKey = activity and GetCommIdentityKey(activity.senderFullName) or nil
+        local playerKey = GetCommIdentityKey(ns.playerFullName)
         if activity
-            and activity.senderFullName ~= ns.playerFullName
+            and activityKey
+            and activityKey ~= playerKey
             and self:IsSenderMatch(sender, activity.senderFullName) then
             self:HandleActivity(activity)
         end
     elseif kind == "X" then
         local senderFullName = fields[3]
+        local senderKey = GetCommIdentityKey(senderFullName)
+        local playerKey = GetCommIdentityKey(ns.playerFullName)
         if senderFullName
-            and senderFullName ~= ns.playerFullName
+            and senderKey
+            and senderKey ~= playerKey
             and self:IsSenderMatch(sender, senderFullName) then
             self:HandleActivityClear(senderFullName)
         end

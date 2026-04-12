@@ -179,6 +179,24 @@ function ns:GetRealmKey(realm)
     return strlower(trimmedRealm:gsub("[%s%-]+", ""))
 end
 
+function ns:GetFullNameKey(fullName, fallbackRealm)
+    if type(fullName) ~= "string" then
+        return nil
+    end
+
+    local name, realm = ns:SplitNameRealm(fullName, fallbackRealm)
+    if type(name) ~= "string" then
+        return nil
+    end
+
+    local realmKey = ns:GetRealmKey(realm)
+    if type(realmKey) ~= "string" then
+        return nil
+    end
+
+    return ("%s-%s"):format(strlower(name), realmKey)
+end
+
 function ns:GetNameRealmFromGUID(guid, fallbackFullName, fallbackRealm)
     local scrubbedFullName, scrubbedFallbackRealm = ns:ScrubSecretValues(fallbackFullName, fallbackRealm)
     if type(scrubbedFullName) == "string" then
