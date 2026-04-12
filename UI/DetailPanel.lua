@@ -927,8 +927,8 @@ function DetailPanel:Create(frame)
     end
 
     frame.detail = CreateFrame("Frame", nil, frame, "InsetFrameTemplate3")
-    frame.detail:SetPoint("TOPRIGHT", -4, -92)
-    frame.detail:SetPoint("BOTTOMRIGHT", -4, 0)
+    frame.detail:SetPoint("TOPRIGHT", -8, -92)
+    frame.detail:SetPoint("BOTTOMRIGHT", -8, 4)
     frame.detail:SetWidth(312)
     if frame.detail.SetClipsChildren then
         frame.detail:SetClipsChildren(true)

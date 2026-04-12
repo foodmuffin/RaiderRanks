@@ -1601,6 +1601,8 @@ function Panel:ApplyLayout()
     local detailWidth = math.floor(math.max(330, math.min(420, width * 0.31)))
     local leftInset = 84
     local rightInset = 12
+    local detailRightInset = 8
+    local detailBottomInset = 8
     local headerTop = -34
     local spacing = 12
     local actionGap = 8
@@ -1638,15 +1640,15 @@ function Panel:ApplyLayout()
     local topOffset = toolbarBottom - 12
 
     frame.detail:ClearAllPoints()
-    frame.detail:SetPoint("TOPRIGHT", 0, topOffset)
-    frame.detail:SetPoint("BOTTOMRIGHT", 0, 0)
+    frame.detail:SetPoint("TOPRIGHT", -detailRightInset, topOffset)
+    frame.detail:SetPoint("BOTTOMRIGHT", -detailRightInset, detailBottomInset)
     frame.detail:SetWidth(detailWidth)
 
     frame.list:ClearAllPoints()
-    frame.list:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, topOffset)
+    frame.list:SetPoint("TOPLEFT", frame, "TOPLEFT", detailRightInset, topOffset)
     frame.list:SetPoint("TOPRIGHT", frame.detail, "TOPLEFT", -spacing, 0)
-    frame.list:SetPoint("BOTTOMLEFT", 0, 0)
-    frame.list:SetPoint("BOTTOMRIGHT", frame.detail, "BOTTOMLEFT", -spacing, 0)
+    frame.list:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", detailRightInset, detailBottomInset)
+    frame.list:SetPoint("BOTTOMRIGHT", frame.detail, "BOTTOMLEFT", -spacing, detailBottomInset)
 
     if ns.DetailPanel then
         ns.DetailPanel:ApplyLayout(frame, detailWidth)
