@@ -2,8 +2,9 @@ local addonName, ns = ...
 
 _G[addonName] = ns
 
+local unresolvedProjectVersionToken = "@project" .. "-version@"
 local addonVersion = C_AddOns.GetAddOnMetadata(addonName, "Version")
-if addonVersion == "@project-version@" then
+if addonVersion == unresolvedProjectVersionToken then
     addonVersion = "dev"
 end
 
