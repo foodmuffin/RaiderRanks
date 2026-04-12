@@ -44,17 +44,23 @@ for index = 1, 40 do
     scanUnits[#scanUnits + 1] = "raid" .. index
 end
 
-local function MatchesFullName(unit, fullName)
+local function MatchesFullName(unit, fullName, guid)
     if not unit or not UnitExists(unit) then
         return false
     end
 
-    local name, realm = UnitFullName(unit)
-    if not name then
+    local unitGUID = UnitGUID(unit)
+    if type(guid) == "string" and type(unitGUID) == "string" and guid == unitGUID then
+        return true
+    end
+
+    if type(fullName) ~= "string" then
         return false
     end
 
-    return ns:ComposeFullName(name, realm) == fullName
+    local name, realm = ns:GetUnitNameRealm(unit, ns.playerRealm)
+    local resolvedFullName = ns:ComposeFullName(name, realm)
+    return type(resolvedFullName) == "string" and resolvedFullName == fullName
 end
 
 local function GetDetailedLevelInfo(itemLink)
@@ -86,14 +92,14 @@ function Inspect:Initialize()
     self.cacheByGUID = ns.db.inspectCache.byGUID
 end
 
-function Inspect:ResolveUnit(fullName)
-    if not fullName then
+function Inspect:ResolveUnit(fullName, guid)
+    if type(fullName) ~= "string" and type(guid) ~= "string" then
         return nil
     end
 
     for index = 1, #scanUnits do
         local unit = scanUnits[index]
-        if MatchesFullName(unit, fullName) then
+        if MatchesFullName(unit, fullName, guid) then
             return unit
         end
     end
@@ -176,7 +182,7 @@ function Inspect:ApplyLiveData(record)
         return
     end
 
-    local unit = self:ResolveUnit(record.fullName)
+    local unit = self:ResolveUnit(record.fullName, record.guid)
     record.unitToken = unit
 
     if not unit then
@@ -256,7 +262,7 @@ function Inspect:QueueRecord(record)
         return
     end
 
-    local unit = record.unitToken or self:ResolveUnit(record.fullName)
+    local unit = record.unitToken or self:ResolveUnit(record.fullName, record.guid)
     if not unit or UnitIsUnit(unit, "player") then
         return
     end
@@ -323,7 +329,7 @@ function Inspect:ProcessQueue()
         return
     end
 
-    if not MatchesFullName(request.unit, request.fullName) then
+    if not MatchesFullName(request.unit, request.fullName, request.guid) then
         self.queued[request.fullName] = nil
         C_Timer.After(0.05, function()
             Inspect:ProcessQueue()

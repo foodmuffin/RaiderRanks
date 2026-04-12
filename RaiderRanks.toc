@@ -3,7 +3,7 @@
 ## Notes: Requires RaiderIO. Optionally reads AstralKeys for shared keystone data.
 ## Category: Dungeons & Raids
 ## Author: OpenAI
-## Version: 0.2.0
+## Version: @project-version@
 ## IconTexture: Interface\AddOns\RaiderRanks\plus-20
 ## SavedVariables: RaiderRanksDB
 ## RequiredDeps: RaiderIO
@@ -11,6 +11,18 @@
 
 Localization/Locale.lua
 Localization/enUS.lua
+Localization/enGB.lua
+Localization/deDE.lua
+Localization/esES.lua
+Localization/esMX.lua
+Localization/frFR.lua
+Localization/itIT.lua
+Localization/koKR.lua
+Localization/ptBR.lua
+Localization/ptPT.lua
+Localization/ruRU.lua
+Localization/zhCN.lua
+Localization/zhTW.lua
 RaiderRanks.lua
 Modules/Config.lua
 Modules/AstralKeys.lua

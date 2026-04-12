@@ -380,9 +380,11 @@ function Comm:CollectGroupMembers()
             return
         end
 
-        local name, realm = UnitFullName(unit)
+        local name, realm = ns:GetUnitNameRealm(unit, ns.playerRealm)
         local fullName = ns:ComposeFullName(name, realm)
-        AddUniqueFullName(members, seen, fullName)
+        if type(fullName) == "string" and not ns:IsSecretValue(fullName) then
+            AddUniqueFullName(members, seen, fullName)
+        end
     end
 
     AddUnit("player")
@@ -434,13 +436,13 @@ function Comm:BuildSnapshot()
         return nil
     end
 
-    local name, realm = UnitFullName("player")
-    if not name then
+    local name, realm, guid = ns:GetUnitNameRealm("player", ns.playerRealm)
+    if type(name) ~= "string" then
         return nil
     end
 
     local record = ns.Data:CreateBlankRecord(name, realm or ns.playerRealm)
-    record.guid = UnitGUID("player")
+    record.guid = guid
 
     ns.Data:ApplyRaiderIO(record)
     ns.Data:ApplyEnrichment(record)

@@ -2,12 +2,18 @@ local addonName, ns = ...
 
 _G[addonName] = ns
 
+local addonVersion = C_AddOns.GetAddOnMetadata(addonName, "Version")
+if addonVersion == "@project-version@" then
+    addonVersion = "dev"
+end
+
 ns.name = addonName
-ns.version = C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
+ns.version = addonVersion or "dev"
 ns.private = ns.private or {}
 ns.callbacks = ns.callbacks or {}
 ns.playerRealm = GetRealmName()
 ns.playerFullName = nil
+ns.playerGUID = nil
 ns.inspectStaleAgeSeconds = 24 * 60 * 60
 
 local eventFrame = CreateFrame("Frame")
@@ -87,6 +93,35 @@ end
 
 eventFrame:SetScript("OnEvent", OnEvent)
 
+function ns:IsSecretValue(value)
+    if type(hasanysecretvalues) == "function" then
+        local ok, result = pcall(hasanysecretvalues, value)
+        if ok then
+            return result and true or false
+        end
+    end
+
+    if type(issecretvalue) == "function" then
+        local ok, result = pcall(issecretvalue, value)
+        if ok then
+            return result and true or false
+        end
+    end
+
+    return false
+end
+
+function ns:ScrubSecretValues(...)
+    if type(scrubsecretvalues) == "function" then
+        local ok, value1, value2, value3, value4 = pcall(scrubsecretvalues, ...)
+        if ok then
+            return value1, value2, value3, value4
+        end
+    end
+
+    return ...
+end
+
 function ns:RegisterEvent(event, handler)
     if not ns.eventRegistry[event] then
         ns.eventRegistry[event] = {}
@@ -124,15 +159,83 @@ function ns:TrimRealmName(realm)
     end
 
     realm = realm:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-    if realm == "" then
-        return ns.playerRealm
+    if realm ~= "" then
+        return realm
     end
 
-    return realm
+    return ns.playerRealm
+end
+
+function ns:GetRealmKey(realm)
+    if type(realm) ~= "string" then
+        return nil
+    end
+
+    local trimmedRealm = ns:TrimRealmName(realm)
+    if type(trimmedRealm) ~= "string" then
+        return nil
+    end
+
+    return strlower(trimmedRealm:gsub("[%s%-]+", ""))
+end
+
+function ns:GetNameRealmFromGUID(guid, fallbackFullName, fallbackRealm)
+    local scrubbedFullName, scrubbedFallbackRealm = ns:ScrubSecretValues(fallbackFullName, fallbackRealm)
+    if type(scrubbedFullName) == "string" then
+        local name, realm = ns:SplitNameRealm(scrubbedFullName, scrubbedFallbackRealm or fallbackRealm)
+        if type(name) == "string" and type(realm) == "string" then
+            return name, realm
+        end
+    end
+
+    if type(guid) == "string" and guid ~= "" and type(GetPlayerInfoByGUID) == "function" then
+        local _, _, _, _, _, name, realm = GetPlayerInfoByGUID(guid)
+        if type(name) == "string" and not ns:IsSecretValue(name) then
+            if realm == "" then
+                realm = fallbackRealm or ns.playerRealm
+            end
+
+            return name, ns:TrimRealmName(realm)
+        end
+    end
+
+    if type(fallbackFullName) ~= "string" or ns:IsSecretValue(fallbackFullName) then
+        return nil, nil
+    end
+
+    local name, realm = ns:SplitNameRealm(fallbackFullName, fallbackRealm)
+    if ns:IsSecretValue(name) or ns:IsSecretValue(realm) then
+        return nil, nil
+    end
+
+    return name, realm
+end
+
+function ns:GetUnitNameRealm(unit, fallbackRealm)
+    if type(unit) ~= "string" or (type(UnitExists) == "function" and not UnitExists(unit)) then
+        return nil, nil, nil
+    end
+
+    local guid = type(UnitGUID) == "function" and UnitGUID(unit) or nil
+    local name, realm = ns:GetNameRealmFromGUID(guid, nil, fallbackRealm)
+    if type(name) == "string" then
+        return name, realm, guid
+    end
+
+    if type(UnitFullName) ~= "function" then
+        return nil, nil, guid
+    end
+
+    local unitName, unitRealm = UnitFullName(unit)
+    if type(unitName) ~= "string" or ns:IsSecretValue(unitName) or ns:IsSecretValue(unitRealm) then
+        return nil, nil, guid
+    end
+
+    return unitName, ns:TrimRealmName(unitRealm or fallbackRealm), guid
 end
 
 function ns:SplitNameRealm(fullName, fallbackRealm)
-    if type(fullName) ~= "string" or fullName == "" then
+    if type(fullName) ~= "string" then
         return nil, nil
     end
 
@@ -143,7 +246,7 @@ function ns:SplitNameRealm(fullName, fallbackRealm)
 end
 
 function ns:ComposeFullName(name, realm)
-    if not name or name == "" then
+    if type(name) ~= "string" then
         return nil
     end
 
@@ -152,12 +255,12 @@ function ns:ComposeFullName(name, realm)
 end
 
 function ns:GetDisplayName(name, realm)
-    if not name or name == "" then
+    if type(name) ~= "string" then
         return ""
     end
 
     realm = ns:TrimRealmName(realm)
-    if not realm or realm == "" or realm == ns.playerRealm then
+    if type(realm) ~= "string" or ns:GetRealmKey(realm) == ns:GetRealmKey(ns.playerRealm) then
         return name
     end
 
@@ -730,8 +833,9 @@ local function HandleAddonLoaded(loadedName)
 end
 
 local function HandlePlayerLogin()
-    local name, realm = UnitFullName("player")
-    ns.playerRealm = realm or GetRealmName()
+    local name, realm, guid = ns:GetUnitNameRealm("player", GetRealmName())
+    ns.playerGUID = guid
+    ns.playerRealm = ns:TrimRealmName(realm or GetRealmName())
     ns.playerFullName = ns:ComposeFullName(name, ns.playerRealm)
 
     ns:FireCallback("PLAYER_LOGIN")

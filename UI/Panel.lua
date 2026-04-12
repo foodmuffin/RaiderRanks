@@ -2087,12 +2087,12 @@ function Panel:UpdateGuildInlineButton(button)
         return
     end
 
-    local fullName = GetGuildRosterInfo(index)
-    if not fullName then
+    local fullName, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(index)
+    local name, realm = ns:GetNameRealmFromGUID(guid, fullName, ns.playerRealm)
+    if type(name) ~= "string" then
         return
     end
 
-    local name, realm = ns:SplitNameRealm(fullName, ns.playerRealm)
     local record = ns.Data:GetRecord(ns:ComposeFullName(name, realm))
     local widget = self:SetupInlineWidget(button)
     self:PopulateInlineWidget(widget, record)
@@ -2150,15 +2150,29 @@ function Panel:GetFriendRecordFromButton(button)
 
     if button.buttonType == FRIENDS_BUTTON_TYPE_WOW and C_FriendList and C_FriendList.GetFriendInfoByIndex then
         local info = C_FriendList.GetFriendInfoByIndex(button.id)
-        if info and info.name then
-            local name, realm = ns:SplitNameRealm(info.name, ns.playerRealm)
+        if info then
+            local name, realm = ns:GetNameRealmFromGUID(info.guid, info.name, ns.playerRealm)
+            if type(name) ~= "string" then
+                return nil
+            end
             return ns.Data:GetRecord(ns:ComposeFullName(name, realm))
         end
     elseif button.buttonType == FRIENDS_BUTTON_TYPE_BNET and C_BattleNet and C_BattleNet.GetFriendAccountInfo then
         local accountInfo = C_BattleNet.GetFriendAccountInfo(button.id)
         local gameAccountInfo = accountInfo and accountInfo.gameAccountInfo
-        if gameAccountInfo and gameAccountInfo.characterName and gameAccountInfo.realmName then
-            return ns.Data:GetRecord(ns:ComposeFullName(gameAccountInfo.characterName, gameAccountInfo.realmName))
+        if gameAccountInfo then
+            local guid = gameAccountInfo.playerGuid or gameAccountInfo.guid
+            local rawRealm = gameAccountInfo.realmName or gameAccountInfo.realmDisplayName
+            local fallbackFullName = nil
+            if type(gameAccountInfo.characterName) == "string" and type(rawRealm) == "string" then
+                fallbackFullName = ns:ComposeFullName(gameAccountInfo.characterName, rawRealm)
+            end
+            local name, realm = ns:GetNameRealmFromGUID(guid, fallbackFullName, ns.playerRealm)
+            if type(name) ~= "string" then
+                return nil
+            end
+
+            return ns.Data:GetRecord(ns:ComposeFullName(name, realm))
         end
     end
 

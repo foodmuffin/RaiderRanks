@@ -7,7 +7,7 @@
 - Player-facing options belong in the native WoW Settings AddOns menu.
 
 ## Architecture
-- `RaiderRanks.lua` owns the namespace, events, shared helpers, and callback bus.
+- `RaiderRanks.lua` owns the namespace, events, shared helpers, secret-value-safe name resolution, and callback bus.
 - `Modules/Config.lua` owns defaults and SavedVariables access.
 - `Modules/Comm.lua` owns the guild-only addon channel, payload/version handling, debounced sends, shared snapshot persistence, transient live-run state, session reporter tracking, and newer-RaiderIO manifest detection.
 - `Modules/Data.lua` owns roster normalization, RaiderIO reads, shared snapshot overlay, unified reported-key resolution, sorting, and current-key qualification.
@@ -16,6 +16,14 @@
 - `UI/DetailPanel.lua` owns the right-hand detail pane creation, interior layout, background styling, hero row, and record rendering.
 - `UI/Settings.lua` owns the native Settings category and setting widgets.
 - `Localization/` owns all addon-authored strings.
+
+## Tainting Rules
+- WoW `12.0.x` secret values can taint roster and unit strings on insecure execution paths.
+- Do not boolean-test, compare, sort, trim, or use raw roster strings as table keys when they come from APIs such as `GetGuildRosterInfo`, `UnitFullName`, `C_FriendList.GetFriendInfoByIndex`, or Battle.net game-account fields.
+- Prefer GUID-first normalization for player identity. Use `ns:GetNameRealmFromGUID`, `ns:GetUnitNameRealm`, and `ns:IsSecretValue` rather than hand-rolling name parsing in roster code.
+- `GetPlayerInfoByGUID(guid)` returns `localizedClass, englishClass, localizedRace, englishRace, sex, name, realmName`.
+- If Blizzard only provides a secret fallback string, skip indexing that record rather than risking taint errors or cross-realm misidentification.
+- Safe normalized full names may still be used for record keys, caches, selection state, and comm lookups after they have been resolved through the shared helpers.
 
 ## Ranking Rules
 - Mythic+ score is the primary ranking metric.
@@ -68,5 +76,6 @@
 - If you add strings, update localization in the same change.
 - If you change guild-sync behavior, sanity-check the master gate, dependent settings, session reporter count, live activity markers, and newer-RaiderIO warning state together.
 - If you change key handling, verify both native guild-sync keys and AstralKeys still compose into the single `record.reportedKey` surface.
+- If you touch guild, friends, inspect, or group-roster identity code, verify the path stays secret-value-safe and still resolves name/realm through GUIDs before indexing or comparing.
 - If you change integrated frame sizing or insets, verify the runtime layout in `UI/Panel.lua`, not just the create-time anchors, and confirm both left and right panes still align.
 - Sanity-check guild roster, friends roster, the integrated PVE tab, settings, slash commands, and the current-key helper before calling the addon change complete.

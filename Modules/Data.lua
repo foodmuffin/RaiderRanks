@@ -330,12 +330,12 @@ function Data:CreateBlankRecord(name, realm)
 end
 
 function Data:AddOrUpdateRecord(incoming)
-    if not incoming or not incoming.name then
+    if type(incoming) ~= "table" or type(incoming.name) ~= "string" then
         return
     end
 
     local fullName = ns:ComposeFullName(incoming.name, incoming.realm)
-    if not fullName then
+    if type(fullName) ~= "string" or ns:IsSecretValue(fullName) then
         return
     end
 
@@ -345,8 +345,12 @@ function Data:AddOrUpdateRecord(incoming)
         self.recordsByKey[fullName] = record
     end
 
-    record.name = incoming.name or record.name
-    record.realm = incoming.realm or record.realm
+    if type(incoming.name) == "string" then
+        record.name = incoming.name
+    end
+    if type(incoming.realm) == "string" then
+        record.realm = incoming.realm
+    end
     record.fullName = fullName
     record.classFile = incoming.classFile or record.classFile
     record.classID = incoming.classID or record.classID
@@ -396,12 +400,12 @@ function Data:CollectGuild()
 
     local count = GetNumGuildMembers(true)
     for index = 1, count do
-        local name, _, rankIndex, level, _, _, _, _, online, _, classFileName, _, _, _, _, _, guid = GetGuildRosterInfo(index)
-        if name then
-            local memberName, realm = ns:SplitNameRealm(name, ns.playerRealm)
+        local fullName, _, rankIndex, level, _, _, _, _, online, _, classFileName, _, _, _, _, _, guid = GetGuildRosterInfo(index)
+        local name, realm = ns:GetNameRealmFromGUID(guid, fullName, ns.playerRealm)
+        if type(name) == "string" then
             self:AddOrUpdateRecord({
                 source = "guild",
-                name = memberName,
+                name = name,
                 realm = realm,
                 classFile = classFileName,
                 level = tonumber(level) or 0,
@@ -417,16 +421,21 @@ function Data:CollectFriends()
     local numFriends = C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetNumFriends() or GetNumFriends()
     for index = 1, numFriends do
         local info = C_FriendList.GetFriendInfoByIndex(index)
-        if info and info.name then
-            local name, realm = ns:SplitNameRealm(info.name, ns.playerRealm)
-            self:AddOrUpdateRecord({
-                source = "friend",
-                name = name,
-                realm = realm,
-                level = info.level or 0,
-                online = info.connected,
-                classFile = info.className and select(2, GetClassInfo(info.classID or 0)) or nil
-            })
+        if info then
+            local name, realm = ns:GetNameRealmFromGUID(info.guid, info.name, ns.playerRealm)
+            local classFile = select(2, GetClassInfo(info.classID or 0))
+
+            if type(name) == "string" then
+                self:AddOrUpdateRecord({
+                    source = "friend",
+                    name = name,
+                    realm = realm,
+                    level = info.level or 0,
+                    online = info.connected,
+                    classFile = classFile,
+                    guid = info.guid
+                })
+            end
         end
     end
 end
@@ -451,9 +460,14 @@ function Data:CollectBNetFriends()
                 if gameAccountInfo
                     and gameAccountInfo.clientProgram == BNET_CLIENT_WOW
                     and (not gameAccountInfo.wowProjectID or gameAccountInfo.wowProjectID == retailProjectID) then
-                    local name = gameAccountInfo.characterName
-                    local realm = gameAccountInfo.realmName or gameAccountInfo.realmDisplayName
-                    if name and realm then
+                    local guid = gameAccountInfo.playerGuid or gameAccountInfo.guid
+                    local rawRealm = gameAccountInfo.realmName or gameAccountInfo.realmDisplayName
+                    local fallbackFullName = nil
+                    if type(gameAccountInfo.characterName) == "string" and type(rawRealm) == "string" then
+                        fallbackFullName = ns:ComposeFullName(gameAccountInfo.characterName, rawRealm)
+                    end
+                    local name, realm = ns:GetNameRealmFromGUID(guid, fallbackFullName, ns.playerRealm)
+                    if type(name) == "string" then
                         self:AddOrUpdateRecord({
                             source = "friend",
                             name = name,
@@ -461,7 +475,8 @@ function Data:CollectBNetFriends()
                             level = gameAccountInfo.characterLevel or 0,
                             online = true,
                             battleTag = battleTag or accountName,
-                            classFile = select(2, GetClassInfo(gameAccountInfo.classID or 0))
+                            classFile = select(2, GetClassInfo(gameAccountInfo.classID or 0)),
+                            guid = guid
                         })
                     end
                 end

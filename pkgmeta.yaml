@@ -1,0 +1,10 @@
+package-as: RaiderRanks
+
+ignore:
+  - AGENTS.md
+
+required-dependencies:
+  - raiderio
+
+optional-dependencies:
+  - astral-keys
