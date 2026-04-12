@@ -2,7 +2,7 @@
 ## Title: RaiderRanks
 ## Notes: Requires RaiderIO. Optionally reads AstralKeys for shared keystone data.
 ## Category: Dungeons & Raids
-## Author: OpenAI
+## Author: @project-author@
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\RaiderRanks\plus-20
 ## SavedVariables: RaiderRanksDB
