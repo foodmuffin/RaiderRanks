@@ -333,17 +333,25 @@ local function GetKeystoneLevelColor(level)
     return HIGHLIGHT_FONT_COLOR
 end
 
-local function ApplyReportedKeyRibbon(row, reportedKey, isPlayerEntry)
+local function ApplyReportedKeyRibbon(row, data, playerRecord, isPlayerEntry)
     if not row or not row.reportedKeyAccent then
         return
     end
 
+    local reportedKey = data and data.reportedKey or nil
     row.reportedKeyAccent:Hide()
     if not reportedKey or not reportedKey.level then
         return
     end
 
     local color = GetKeystoneLevelColor(reportedKey.level)
+    if not isPlayerEntry
+        and playerRecord
+        and ns.DetailPanel
+        and type(ns.DetailPanel.GetReportedKeyScoreImpact) == "function"
+        and ns.DetailPanel:GetReportedKeyScoreImpact(playerRecord, reportedKey, true) <= 0 then
+        color = GRAY_FONT_COLOR
+    end
     local r, g, b = color:GetRGB()
     local xOffset = isPlayerEntry and 3 or 0
     row.reportedKeyAccent:ClearAllPoints()
@@ -1205,12 +1213,13 @@ function Panel:ApplyListRowData(row, data)
     local timed2_3Count = GetSummaryBucketValue(data, "timed2_3")
     local stripeIndex = data.displayRank or data.displayIndex or 1
     local isPlayerEntry = data.fullName and ns.playerFullName and data.fullName == ns.playerFullName
+    local playerRecord = ns.playerFullName and ns.Data:GetRecord(ns.playerFullName) or nil
     local showFriendMarker = ShouldShowFriendSourceIcon(data)
     local showActivityMarker = ShouldShowActivityMarker(data)
     row.background:SetColorTexture(0, 0, 0, stripeIndex % 2 == 0 and 0.05 or 0.1)
     row.selfGlow:SetShown(isPlayerEntry)
     row.selfAccent:SetShown(isPlayerEntry)
-    ApplyReportedKeyRibbon(row, data.reportedKey, isPlayerEntry)
+    ApplyReportedKeyRibbon(row, data, playerRecord, isPlayerEntry)
     row.selfMarker:SetShown(isPlayerEntry)
     row.friendMarker:SetShown(showFriendMarker)
     row.activityMarker:SetShown(showActivityMarker)

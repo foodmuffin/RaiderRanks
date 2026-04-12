@@ -181,6 +181,91 @@ local function HasSharedMythicData(snapshot)
         or (snapshot.completed2_3 or 0) > 0
 end
 
+local function GetReportedKeyMapInfo(mapID)
+    if not mapID
+        or not C_ChallengeMode
+        or type(C_ChallengeMode.GetMapUIInfo) ~= "function" then
+        return ns.L.UNKNOWN, nil, nil
+    end
+
+    local mapName, _, _, texture, backgroundTexture = C_ChallengeMode.GetMapUIInfo(mapID)
+    return mapName or ns.L.UNKNOWN, texture, backgroundTexture
+end
+
+local function CloneReportedKey(key)
+    if type(key) ~= "table" then
+        return nil
+    end
+
+    return {
+        unit = key.unit,
+        mapID = key.mapID,
+        level = key.level,
+        mapName = key.mapName,
+        texture = key.texture,
+        backgroundTexture = key.backgroundTexture,
+        weeklyBest = key.weeklyBest,
+        mplusScore = key.mplusScore,
+        timeStamp = key.timeStamp,
+        source = key.source
+    }
+end
+
+local function BuildNativeReportedKey(mapID, level, timeStamp, source)
+    if not mapID or mapID <= 0 or not level or level <= 0 then
+        return nil
+    end
+
+    local mapName, texture, backgroundTexture = GetReportedKeyMapInfo(mapID)
+    return {
+        mapID = mapID,
+        level = level,
+        mapName = mapName or ns.L.UNKNOWN,
+        texture = texture,
+        backgroundTexture = backgroundTexture,
+        timeStamp = timeStamp,
+        source = source or "guildsync"
+    }
+end
+
+local function MergeReportedKeys(primary, secondary)
+    local merged = CloneReportedKey(primary)
+    if not merged then
+        return nil
+    end
+
+    if type(secondary) ~= "table" then
+        return merged
+    end
+
+    if (not merged.mapName or merged.mapName == "" or merged.mapName == ns.L.UNKNOWN)
+        and secondary.mapName then
+        merged.mapName = secondary.mapName
+    end
+
+    if not merged.texture and secondary.texture then
+        merged.texture = secondary.texture
+    end
+
+    if not merged.backgroundTexture and secondary.backgroundTexture then
+        merged.backgroundTexture = secondary.backgroundTexture
+    end
+
+    if (merged.timeStamp or 0) <= 0 and secondary.timeStamp then
+        merged.timeStamp = secondary.timeStamp
+    end
+
+    if secondary.weeklyBest ~= nil then
+        merged.weeklyBest = secondary.weeklyBest
+    end
+
+    if secondary.mplusScore ~= nil then
+        merged.mplusScore = secondary.mplusScore
+    end
+
+    return merged
+end
+
 function Data:CreateBlankRecord(name, realm)
     local fullName = ns:ComposeFullName(name, realm)
     return {
@@ -568,13 +653,69 @@ function Data:ApplyCommOverlay(record)
     ApplyMilestoneDisplayFloors(record)
 end
 
-function Data:ApplyAstralKeys(record)
+function Data:GetReportedKey(fullName)
+    if type(fullName) ~= "string" or fullName == "" then
+        return nil
+    end
+
+    local astralKey = ns.AstralKeys and ns.AstralKeys:GetUnitKey(fullName) or nil
+    local nativeKey = nil
+    local comm = ns.Comm
+
+    if comm and comm.IsEnabled and comm:IsEnabled() then
+        if fullName == ns.playerFullName and type(comm.GetLocalOwnedKey) == "function" then
+            local ownedKey = comm:GetLocalOwnedKey()
+            if ownedKey then
+                nativeKey = BuildNativeReportedKey(
+                    ownedKey.mapID,
+                    ownedKey.level,
+                    ownedKey.timeStamp,
+                    "native"
+                )
+            end
+        else
+            local snapshot = comm:GetSnapshot(fullName)
+            if snapshot then
+                nativeKey = BuildNativeReportedKey(
+                    snapshot.keyMapID,
+                    snapshot.keyLevel,
+                    snapshot.keyTimeStamp or snapshot.observedAt,
+                    "guildsync"
+                )
+            end
+        end
+    end
+
+    if nativeKey and astralKey then
+        if nativeKey.mapID == astralKey.mapID and nativeKey.level == astralKey.level then
+            if (nativeKey.timeStamp or 0) > (astralKey.timeStamp or 0) then
+                return MergeReportedKeys(nativeKey, astralKey)
+            end
+
+            return MergeReportedKeys(astralKey, nativeKey)
+        end
+
+        if (nativeKey.timeStamp or 0) > (astralKey.timeStamp or 0) then
+            return nativeKey
+        end
+
+        return CloneReportedKey(astralKey)
+    end
+
+    if nativeKey then
+        return nativeKey
+    end
+
+    return CloneReportedKey(astralKey)
+end
+
+function Data:ApplyReportedKey(record)
     record.reportedKey = nil
-    if not ns.AstralKeys then
+    if not record then
         return
     end
 
-    record.reportedKey = ns.AstralKeys:GetUnitKey(record.fullName)
+    record.reportedKey = self:GetReportedKey(record.fullName)
 end
 
 local function AreReportedKeysEqual(left, right)
@@ -597,7 +738,7 @@ function Data:RefreshAstralKeys(reason)
     for index = 1, #self.records do
         local record = self.records[index]
         local previousKey = record.reportedKey
-        self:ApplyAstralKeys(record)
+        self:ApplyReportedKey(record)
         if not AreReportedKeysEqual(previousKey, record.reportedKey) then
             changed = true
         end
@@ -762,7 +903,7 @@ function Data:Refresh(reason)
         local record = self.records[index]
         self:ApplyRaiderIO(record)
         self:ApplyEnrichment(record)
-        self:ApplyAstralKeys(record)
+        self:ApplyReportedKey(record)
         self:ApplyCommOverlay(record)
     end
 

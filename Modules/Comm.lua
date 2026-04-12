@@ -9,6 +9,8 @@ local Comm = {
     lastSentSignatures = {},
     activeRunSources = {},
     activeRunParticipants = {},
+    sessionReporters = {},
+    sessionReporterCount = 0,
     newerManifestBySender = {},
     refreshPending = false,
     refreshReason = nil,
@@ -16,7 +18,8 @@ local Comm = {
         grouped = false,
         inInstance = false,
         instanceType = "none",
-        challengeActive = false
+        challengeActive = false,
+        ownedKeySignature = ""
     }
 }
 
@@ -83,6 +86,27 @@ local function GetInstanceState()
     return not not inInstance, instanceType or "none"
 end
 
+local function GetChallengeMapInfo(mapID)
+    if not mapID
+        or not C_ChallengeMode
+        or type(C_ChallengeMode.GetMapUIInfo) ~= "function" then
+        return nil, nil, nil
+    end
+
+    local mapName, _, _, texture, backgroundTexture = C_ChallengeMode.GetMapUIInfo(mapID)
+    return mapName, texture, backgroundTexture
+end
+
+local function BuildOwnedKeySignature(keyInfo)
+    local mapID = keyInfo and tonumber(keyInfo.mapID) or nil
+    local level = keyInfo and tonumber(keyInfo.level) or nil
+    if not mapID or mapID <= 0 or not level or level <= 0 then
+        return ""
+    end
+
+    return ("%d:%d"):format(mapID, level)
+end
+
 local function FormatManifestTimestamp(raw)
     if type(raw) ~= "string" then
         return nil
@@ -131,6 +155,7 @@ function Comm:InitializeState()
     self.state.inInstance = inInstance
     self.state.instanceType = instanceType
     self.state.challengeActive = IsChallengeActive()
+    self.state.ownedKeySignature = self:GetLocalOwnedKeySignature()
 end
 
 function Comm:Initialize()
@@ -195,7 +220,10 @@ function Comm:ResetRuntimeState()
     wipe(self.lastSentSignatures)
     wipe(self.activeRunSources)
     wipe(self.activeRunParticipants)
+    wipe(self.sessionReporters)
+    self.sessionReporterCount = 0
     wipe(self.newerManifestBySender)
+    self.state.ownedKeySignature = self:GetLocalOwnedKeySignature()
 
     if self.queueTicker then
         self.queueTicker:Cancel()
@@ -352,6 +380,35 @@ function Comm:CollectGroupMembers()
     return members
 end
 
+function Comm:GetLocalOwnedKey()
+    local mapID = C_MythicPlus
+        and type(C_MythicPlus.GetOwnedKeystoneChallengeMapID) == "function"
+        and C_MythicPlus.GetOwnedKeystoneChallengeMapID()
+        or nil
+    local level = C_MythicPlus
+        and type(C_MythicPlus.GetOwnedKeystoneLevel) == "function"
+        and C_MythicPlus.GetOwnedKeystoneLevel()
+        or nil
+
+    if not mapID or mapID <= 0 or not level or level <= 0 then
+        return nil
+    end
+
+    local mapName, texture, backgroundTexture = GetChallengeMapInfo(mapID)
+    return {
+        mapID = mapID,
+        level = level,
+        mapName = mapName,
+        texture = texture,
+        backgroundTexture = backgroundTexture,
+        timeStamp = ns:GetCurrentTimestamp()
+    }
+end
+
+function Comm:GetLocalOwnedKeySignature()
+    return BuildOwnedKeySignature(self:GetLocalOwnedKey())
+end
+
 function Comm:BuildSnapshot()
     if not ns.playerFullName or not ns.Data or type(ns.Data.CreateBlankRecord) ~= "function" then
         return nil
@@ -369,6 +426,7 @@ function Comm:BuildSnapshot()
     ns.Data:ApplyEnrichment(record)
 
     local metadata = ns:GetRaiderIOMetadata()
+    local ownedKey = self:GetLocalOwnedKey()
     return {
         senderFullName = record.fullName,
         observedAt = ns:GetCurrentTimestamp(),
@@ -390,7 +448,10 @@ function Comm:BuildSnapshot()
         itemLevel = ns:GetDisplayedItemLevel(record.equippedItemLevel) or 0,
         specID = record.specID or 0,
         roleBucket = record.roleBucket or "unknown",
-        manifestDatasets = metadata.datasets or {}
+        manifestDatasets = metadata.datasets or {},
+        keyMapID = ownedKey and ownedKey.mapID or 0,
+        keyLevel = ownedKey and ownedKey.level or 0,
+        keyTimeStamp = ownedKey and ownedKey.timeStamp or 0
     }
 end
 
@@ -410,10 +471,7 @@ function Comm:BuildActivity()
         members[1] = ns.playerFullName
     end
 
-    local mapName, _, _, texture, backgroundTexture
-    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
-        mapName, _, _, texture, backgroundTexture = C_ChallengeMode.GetMapUIInfo(mapID)
-    end
+    local mapName, texture, backgroundTexture = GetChallengeMapInfo(mapID)
 
     return {
         senderFullName = ns.playerFullName,
@@ -456,7 +514,10 @@ function Comm:SerializeSnapshot(snapshot)
         tostring(snapshot.completed11_14 or 0),
         tostring(snapshot.completed9_10 or 0),
         tostring(snapshot.completed4_8 or 0),
-        tostring(snapshot.completed2_3 or 0)
+        tostring(snapshot.completed2_3 or 0),
+        tostring(snapshot.keyMapID or 0),
+        tostring(snapshot.keyLevel or 0),
+        tostring(snapshot.keyTimeStamp or 0)
     }, "\t")
 end
 
@@ -492,6 +553,18 @@ function Comm:DeserializeSnapshot(fields)
         return nil
     end
 
+    local keyMapID = fields[24] and (tonumber(fields[24]) or 0) or 0
+    local keyLevel = fields[25] and (tonumber(fields[25]) or 0) or 0
+    local keyTimeStamp = fields[26] and (tonumber(fields[26]) or 0) or 0
+
+    if keyMapID <= 0 or keyLevel <= 0 then
+        keyMapID = nil
+        keyLevel = nil
+        keyTimeStamp = nil
+    elseif not keyTimeStamp or keyTimeStamp <= 0 then
+        keyTimeStamp = observedAt
+    end
+
     return {
         senderFullName = senderFullName,
         observedAt = observedAt,
@@ -513,7 +586,10 @@ function Comm:DeserializeSnapshot(fields)
         completed11_14 = fields[20] and (tonumber(fields[20]) or 0) or nil,
         completed9_10 = fields[21] and (tonumber(fields[21]) or 0) or nil,
         completed4_8 = fields[22] and (tonumber(fields[22]) or 0) or nil,
-        completed2_3 = fields[23] and (tonumber(fields[23]) or 0) or nil
+        completed2_3 = fields[23] and (tonumber(fields[23]) or 0) or nil,
+        keyMapID = keyMapID,
+        keyLevel = keyLevel,
+        keyTimeStamp = keyTimeStamp
     }
 end
 
@@ -537,10 +613,7 @@ function Comm:DeserializeActivity(fields)
     end
     AddUniqueFullName(members, seen, senderFullName)
 
-    local mapName, _, _, texture, backgroundTexture
-    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
-        mapName, _, _, texture, backgroundTexture = C_ChallengeMode.GetMapUIInfo(mapID)
-    end
+    local mapName, texture, backgroundTexture = GetChallengeMapInfo(mapID)
 
     return {
         senderFullName = senderFullName,
@@ -622,6 +695,14 @@ function Comm:GetNewerRaiderIOSources()
     end)
 
     return sources
+end
+
+function Comm:GetSessionReporterCount()
+    if not self:IsEnabled() then
+        return 0
+    end
+
+    return self.sessionReporterCount or 0
 end
 
 function Comm:ClearActivitySource(senderFullName)
@@ -737,6 +818,11 @@ function Comm:QueueSnapshot(reason, delaySeconds)
         return
     end
 
+    self.state.ownedKeySignature = BuildOwnedKeySignature({
+        mapID = snapshot.keyMapID,
+        level = snapshot.keyLevel
+    })
+
     local message = self:SerializeSnapshot(snapshot)
     self:EnqueueMessage("snapshot", message, "snapshot:" .. message, delaySeconds or 0.75)
 end
@@ -763,6 +849,10 @@ end
 function Comm:HandleSnapshot(snapshot)
     self.sharedSnapshots = self.sharedSnapshots or {}
     self.sharedSnapshots[snapshot.senderFullName] = snapshot
+    if not self.sessionReporters[snapshot.senderFullName] then
+        self.sessionReporters[snapshot.senderFullName] = true
+        self.sessionReporterCount = (self.sessionReporterCount or 0) + 1
+    end
     self:UpdateNewerManifestState(snapshot.senderFullName, snapshot.manifestDatasets)
     ns:FireCallback("COMM_SNAPSHOT_UPDATED", snapshot.senderFullName, snapshot)
     self:RequestDataRefresh("comm_snapshot")
@@ -862,6 +952,18 @@ function Comm:HandleWorldStateChange()
     self.state.challengeActive = challengeActive
 end
 
+function Comm:HandleBagUpdateDelayed()
+    local ownedKeySignature = self:GetLocalOwnedKeySignature()
+    if ownedKeySignature == (self.state.ownedKeySignature or "") then
+        return
+    end
+
+    self.state.ownedKeySignature = ownedKeySignature
+    if self:IsEnabled() then
+        self:QueueSnapshot("bag_update", 0.5)
+    end
+end
+
 ns:RegisterCallback("ADDON_READY", function()
     Comm:Initialize()
 end)
@@ -910,15 +1012,22 @@ end)
 
 ns:RegisterEvent("CHALLENGE_MODE_START", function()
     Comm.state.challengeActive = true
+    Comm:QueueSnapshot("challenge_start", 0.2)
     Comm:QueueActivity("challenge_start", 0.15)
 end)
 
 ns:RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
     Comm.state.challengeActive = false
     Comm:QueueActivityClear("challenge_completed", 0.1)
+    Comm:QueueSnapshot("challenge_completed", 0.4)
 end)
 
 ns:RegisterEvent("CHALLENGE_MODE_RESET", function()
     Comm.state.challengeActive = false
     Comm:QueueActivityClear("challenge_reset", 0.1)
+    Comm:QueueSnapshot("challenge_reset", 0.4)
+end)
+
+ns:RegisterEvent("BAG_UPDATE_DELAYED", function()
+    Comm:HandleBagUpdateDelayed()
 end)

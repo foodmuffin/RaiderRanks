@@ -808,11 +808,23 @@ local function BuildKeyScoreImpactText(bestProfile, targetLevel, isTimed)
 end
 
 local function GetKeyScoreImpactColor(bestProfile, targetLevel, isTimed)
-    if GetKeyScoreImpact(bestProfile, targetLevel, isTimed) > 0 then
+    if ns:Round(GetKeyScoreImpact(bestProfile, targetLevel, isTimed)) > 0 then
         return GREEN_FONT_COLOR
     end
 
     return GRAY_FONT_COLOR
+end
+
+function DetailPanel:GetReportedKeyScoreImpact(record, reportedKey, isTimed)
+    if not record
+        or type(reportedKey) ~= "table"
+        or not reportedKey.mapID
+        or not reportedKey.level then
+        return 0
+    end
+
+    local bestProfile = FindDungeonProfile(record, reportedKey.mapID)
+    return ns:Round(GetKeyScoreImpact(bestProfile, reportedKey.level, isTimed ~= false))
 end
 
 local function BuildCurrentKeyStatusLabel(status)
@@ -949,12 +961,12 @@ function DetailPanel:Create(frame)
     detail.hero.background = detail.hero:CreateTexture(nil, "BACKGROUND")
     detail.hero.background:SetAllPoints()
     detail.hero.background:SetTexture(panelBackgroundTexture)
-    detail.hero.background:SetAlpha(0.98)
+    detail.hero.background:SetAlpha(0)
 
     detail.hero.marble = detail.hero:CreateTexture(nil, "ARTWORK")
     detail.hero.marble:SetAllPoints()
     detail.hero.marble:SetTexture(marbleTexture)
-    detail.hero.marble:SetAlpha(0.16)
+    detail.hero.marble:SetAlpha(0)
     if detail.hero.marble.SetHorizTile then
         detail.hero.marble:SetHorizTile(true)
         detail.hero.marble:SetVertTile(true)
@@ -963,26 +975,69 @@ function DetailPanel:Create(frame)
     detail.hero.tint = detail.hero:CreateTexture(nil, "ARTWORK")
     detail.hero.tint:SetAllPoints()
     detail.hero.tint:SetTexture(solidTexture)
-    detail.hero.tint:SetVertexColor(1, 1, 1, 0.04)
+    detail.hero.tint:SetVertexColor(1, 1, 1, 0)
 
     detail.hero.topAccent = detail.hero:CreateTexture(nil, "OVERLAY")
     detail.hero.topAccent:SetPoint("TOPLEFT", 0, 0)
     detail.hero.topAccent:SetPoint("TOPRIGHT", 0, 0)
     detail.hero.topAccent:SetHeight(2)
     detail.hero.topAccent:SetTexture(solidTexture)
-    detail.hero.topAccent:SetVertexColor(1, 1, 1, 0.4)
+    detail.hero.topAccent:SetVertexColor(1, 1, 1, 0)
 
-    CreateBorder(detail.hero, "TOPLEFT", "TOPRIGHT", nil, 1)
-    CreateBorder(detail.hero, "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
-    CreateBorder(detail.hero, "TOPLEFT", "BOTTOMLEFT", 1, nil)
-    CreateBorder(detail.hero, "TOPRIGHT", "BOTTOMRIGHT", 1, nil)
+    detail.hero.topBorder = CreateBorder(detail.hero, "TOPLEFT", "TOPRIGHT", nil, 1)
+    detail.hero.bottomBorder = CreateBorder(detail.hero, "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
+    detail.hero.leftBorder = CreateBorder(detail.hero, "TOPLEFT", "BOTTOMLEFT", 1, nil)
+    detail.hero.rightBorder = CreateBorder(detail.hero, "TOPRIGHT", "BOTTOMRIGHT", 1, nil)
+    detail.hero.topBorder:Hide()
+    detail.hero.bottomBorder:Hide()
+    detail.hero.leftBorder:Hide()
+    detail.hero.rightBorder:Hide()
 
-    detail.hero.name = detail.hero:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Large")
-    detail.hero.name:SetPoint("TOPLEFT", 34, -10)
+    detail.hero.nameRibbon = CreateFrame("Frame", nil, detail.hero)
+    detail.hero.nameRibbon.shadow = detail.hero.nameRibbon:CreateTexture(nil, "BACKGROUND")
+    detail.hero.nameRibbon.shadow:SetPoint("TOPLEFT", 1, -1)
+    detail.hero.nameRibbon.shadow:SetPoint("BOTTOMRIGHT", 1, -1)
+    detail.hero.nameRibbon.shadow:SetTexture(solidTexture)
+    detail.hero.nameRibbon.shadow:SetVertexColor(0, 0, 0, 0.14)
+
+    detail.hero.nameRibbon.background = detail.hero.nameRibbon:CreateTexture(nil, "ARTWORK")
+    detail.hero.nameRibbon.background:SetAllPoints()
+    detail.hero.nameRibbon.background:SetTexture(solidTexture)
+    detail.hero.nameRibbon.background:SetVertexColor(1, 1, 1, 0.1)
+
+    detail.hero.nameRibbon.topEdge = detail.hero.nameRibbon:CreateTexture(nil, "OVERLAY")
+    detail.hero.nameRibbon.topEdge:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.nameRibbon.topEdge:SetPoint("TOPRIGHT", 0, 0)
+    detail.hero.nameRibbon.topEdge:SetHeight(1)
+    detail.hero.nameRibbon.topEdge:SetTexture(solidTexture)
+    detail.hero.nameRibbon.topEdge:SetVertexColor(1, 1, 1, 0.16)
+
+    detail.hero.nameRibbon.bottomEdge = detail.hero.nameRibbon:CreateTexture(nil, "OVERLAY")
+    detail.hero.nameRibbon.bottomEdge:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.nameRibbon.bottomEdge:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail.hero.nameRibbon.bottomEdge:SetHeight(1)
+    detail.hero.nameRibbon.bottomEdge:SetTexture(solidTexture)
+    detail.hero.nameRibbon.bottomEdge:SetVertexColor(0, 0, 0, 0.55)
+
+    detail.hero.nameRibbon.leftCap = detail.hero.nameRibbon:CreateTexture(nil, "BORDER")
+    detail.hero.nameRibbon.leftCap:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.nameRibbon.leftCap:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.nameRibbon.leftCap:SetWidth(2)
+    detail.hero.nameRibbon.leftCap:SetTexture(solidTexture)
+    detail.hero.nameRibbon.leftCap:SetVertexColor(1, 1, 1, 0.3)
+
+    detail.hero.nameRibbon.rightCap = detail.hero.nameRibbon:CreateTexture(nil, "BORDER")
+    detail.hero.nameRibbon.rightCap:SetPoint("TOPRIGHT", 0, 0)
+    detail.hero.nameRibbon.rightCap:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail.hero.nameRibbon.rightCap:SetWidth(1)
+    detail.hero.nameRibbon.rightCap:SetTexture(solidTexture)
+    detail.hero.nameRibbon.rightCap:SetVertexColor(1, 1, 1, 0.08)
+
+    detail.hero.name = detail.hero.nameRibbon:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Large")
     detail.hero.name:SetJustifyH("LEFT")
     detail.hero.name:SetWordWrap(false)
 
-    detail.hero.roleBadge = CreateFrame("Button", nil, detail.hero)
+    detail.hero.roleBadge = CreateFrame("Button", nil, detail.hero.nameRibbon)
     detail.hero.roleBadge:SetSize(14, 14)
     detail.hero.roleBadge.background = detail.hero.roleBadge:CreateTexture(nil, "BACKGROUND")
     detail.hero.roleBadge.background:SetAllPoints()
@@ -1029,15 +1084,60 @@ function DetailPanel:Create(frame)
     detail.hero.meta:SetJustifyH("LEFT")
     detail.hero.meta:Hide()
 
-    detail.hero.scoreLabel = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    detail.hero.scoreLabel:SetPoint("TOPLEFT", detail.hero.name, "BOTTOMLEFT", 0, -6)
-    detail.hero.scoreLabel:SetJustifyH("LEFT")
+    detail.hero.scorePlate = CreateFrame("Frame", nil, detail.hero)
+    detail.hero.scorePlate.background = detail.hero.scorePlate:CreateTexture(nil, "BACKGROUND")
+    detail.hero.scorePlate.background:SetAllPoints()
+    detail.hero.scorePlate.background:SetTexture(solidTexture)
+    detail.hero.scorePlate.background:SetVertexColor(0.04, 0.04, 0.05, 0.38)
+
+    detail.hero.scorePlate.glow = detail.hero.scorePlate:CreateTexture(nil, "ARTWORK")
+    detail.hero.scorePlate.glow:SetPoint("TOPLEFT", 1, -1)
+    detail.hero.scorePlate.glow:SetPoint("BOTTOMRIGHT", -1, 1)
+    detail.hero.scorePlate.glow:SetTexture(solidTexture)
+    detail.hero.scorePlate.glow:SetVertexColor(1, 1, 1, 0.02)
+
+    detail.hero.scorePlate.sideAccent = detail.hero.scorePlate:CreateTexture(nil, "ARTWORK")
+    detail.hero.scorePlate.sideAccent:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.scorePlate.sideAccent:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.scorePlate.sideAccent:SetWidth(3)
+    detail.hero.scorePlate.sideAccent:SetTexture(solidTexture)
+    detail.hero.scorePlate.sideAccent:SetVertexColor(1, 1, 1, 0.85)
+
+    detail.hero.scorePlate.topEdge = detail.hero.scorePlate:CreateTexture(nil, "OVERLAY")
+    detail.hero.scorePlate.topEdge:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.scorePlate.topEdge:SetPoint("TOPRIGHT", 0, 0)
+    detail.hero.scorePlate.topEdge:SetHeight(1)
+    detail.hero.scorePlate.topEdge:SetTexture(solidTexture)
+    detail.hero.scorePlate.topEdge:SetVertexColor(1, 1, 1, 0.06)
+
+    detail.hero.scorePlate.bottomEdge = detail.hero.scorePlate:CreateTexture(nil, "OVERLAY")
+    detail.hero.scorePlate.bottomEdge:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.scorePlate.bottomEdge:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail.hero.scorePlate.bottomEdge:SetHeight(1)
+    detail.hero.scorePlate.bottomEdge:SetTexture(solidTexture)
+    detail.hero.scorePlate.bottomEdge:SetVertexColor(0, 0, 0, 0.22)
+
+    detail.hero.scorePlate.leftEdge = detail.hero.scorePlate:CreateTexture(nil, "OVERLAY")
+    detail.hero.scorePlate.leftEdge:SetPoint("TOPLEFT", 0, 0)
+    detail.hero.scorePlate.leftEdge:SetPoint("BOTTOMLEFT", 0, 0)
+    detail.hero.scorePlate.leftEdge:SetWidth(1)
+    detail.hero.scorePlate.leftEdge:SetTexture(solidTexture)
+    detail.hero.scorePlate.leftEdge:SetVertexColor(1, 1, 1, 0.03)
+
+    detail.hero.scorePlate.rightEdge = detail.hero.scorePlate:CreateTexture(nil, "OVERLAY")
+    detail.hero.scorePlate.rightEdge:SetPoint("TOPRIGHT", 0, 0)
+    detail.hero.scorePlate.rightEdge:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail.hero.scorePlate.rightEdge:SetWidth(1)
+    detail.hero.scorePlate.rightEdge:SetTexture(solidTexture)
+    detail.hero.scorePlate.rightEdge:SetVertexColor(1, 1, 1, 0.03)
+
+    detail.hero.scoreLabel = detail.hero.scorePlate:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    detail.hero.scoreLabel:SetJustifyH("CENTER")
     detail.hero.scoreLabel:SetText(ns.L.DETAIL_SCORE)
     detail.hero.scoreLabel:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
 
-    detail.hero.scoreValue = detail.hero:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Huge3")
-    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -1)
-    detail.hero.scoreValue:SetJustifyH("LEFT")
+    detail.hero.scoreValue = detail.hero.scorePlate:CreateFontString(nil, "ARTWORK", "SystemFont_Shadow_Huge3")
+    detail.hero.scoreValue:SetJustifyH("CENTER")
     detail.hero.scoreValue:SetWordWrap(false)
 
     detail.hero.bestRun = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -1045,13 +1145,11 @@ function DetailPanel:Create(frame)
     detail.hero.bestRun:SetJustifyH("LEFT")
     detail.hero.bestRun:Hide()
 
-    detail.hero.mainScore = detail.hero:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -2)
-    detail.hero.mainScore:SetJustifyH("LEFT")
+    detail.hero.mainScore = detail.hero.scorePlate:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    detail.hero.mainScore:SetJustifyH("CENTER")
 
-    detail.hero.infoButton = CreateFrame("Button", nil, detail.hero)
-    detail.hero.infoButton:SetSize(20, 20)
-    detail.hero.infoButton:SetPoint("TOPRIGHT", -10, -10)
+    detail.hero.infoButton = CreateFrame("Button", nil, detail.hero.nameRibbon)
+    detail.hero.infoButton:SetSize(16, 16)
     detail.hero.infoButton:SetNormalTexture("Interface\\Common\\help-i")
     detail.hero.infoButton:SetHighlightTexture("Interface\\Common\\help-i", "ADD")
     detail.hero.infoButton:SetPushedTexture("Interface\\Common\\help-i")
@@ -1077,7 +1175,7 @@ function DetailPanel:Create(frame)
     detail.summaryRows = {
         CreateValueRow(detail.summarySection, ns.L.SPEC),
         CreateValueRow(detail.summarySection, ns.L.ITEM_LEVEL),
-        CreateValueRow(detail.summarySection, ns.L.DETAIL_ASTRALKEYS_KEY)
+        CreateValueRow(detail.summarySection, ns.L.DETAIL_REPORTED_KEY)
     }
 
     detail.summaryRows[1]:SetPoint("TOPLEFT", detail.summarySection.divider, "BOTTOMLEFT", 0, -6)
@@ -1263,18 +1361,52 @@ function DetailPanel:ApplyLayout(frame, detailWidth)
     local bucketWidth = math.max(28, math.floor((contentWidth - nameWidth - (matrixGap * #timedBucketKeys)) / #timedBucketKeys))
     nameWidth = contentWidth - (bucketWidth * #timedBucketKeys) - (matrixGap * #timedBucketKeys)
 
+    local heroCardGap = 8
+    local heroCardHeight = 54
+    local scoreCardWidth = math.max(118, math.min(156, math.floor(contentWidth * 0.34)))
+    local minNameCardWidth = 96
+    if contentWidth < (scoreCardWidth + heroCardGap + minNameCardWidth) then
+        scoreCardWidth = math.max(100, contentWidth - heroCardGap - minNameCardWidth)
+    end
+    local nameCardWidth = contentWidth - scoreCardWidth - heroCardGap
+
     detail.hero:ClearAllPoints()
     detail.hero:SetPoint("TOPLEFT", detail, "TOPLEFT", inset, -inset)
     detail.hero:SetPoint("TOPRIGHT", detail, "TOPRIGHT", -inset, -inset)
-    detail.hero:SetHeight(104)
+    detail.hero:SetHeight(heroCardHeight)
+
+    detail.hero.nameRibbon:ClearAllPoints()
+    detail.hero.nameRibbon:SetPoint("TOPLEFT", detail.hero, "TOPLEFT", 0, 0)
+    detail.hero.nameRibbon:SetPoint("BOTTOMLEFT", detail.hero, "BOTTOMLEFT", 0, 0)
+    detail.hero.nameRibbon:SetWidth(nameCardWidth)
 
     detail.hero.roleBadge:ClearAllPoints()
-    detail.hero.roleBadge:SetPoint("TOPLEFT", detail.hero, "TOPLEFT", 14, -12)
+    detail.hero.roleBadge:SetPoint("LEFT", detail.hero.nameRibbon, "LEFT", 8, 0)
 
-    detail.hero.scoreLabel:SetWidth(contentWidth - 28)
-    detail.hero.scoreValue:SetWidth(contentWidth - 28)
-    detail.hero.name:SetWidth(contentWidth - 62)
-    detail.hero.mainScore:SetWidth(contentWidth - 28)
+    detail.hero.infoButton:ClearAllPoints()
+    detail.hero.infoButton:SetPoint("RIGHT", detail.hero.nameRibbon, "RIGHT", -6, 0)
+
+    detail.hero.name:ClearAllPoints()
+    detail.hero.name:SetPoint("LEFT", detail.hero.roleBadge, "RIGHT", 8, 0)
+    detail.hero.name:SetPoint("RIGHT", detail.hero.infoButton, "LEFT", -8, 0)
+
+    detail.hero.scorePlate:ClearAllPoints()
+    detail.hero.scorePlate:SetPoint("TOPRIGHT", detail.hero, "TOPRIGHT", 0, 0)
+    detail.hero.scorePlate:SetPoint("BOTTOMRIGHT", detail.hero, "BOTTOMRIGHT", 0, 0)
+    detail.hero.scorePlate:SetWidth(scoreCardWidth)
+
+    detail.hero.scoreLabel:ClearAllPoints()
+    detail.hero.scoreLabel:SetPoint("TOPLEFT", detail.hero.scorePlate, "TOPLEFT", 8, -5)
+    detail.hero.scoreLabel:SetPoint("TOPRIGHT", detail.hero.scorePlate, "TOPRIGHT", -8, -5)
+
+    detail.hero.scoreValue:ClearAllPoints()
+    detail.hero.scoreValue:SetPoint("TOPLEFT", detail.hero.scoreLabel, "BOTTOMLEFT", 0, -1)
+    detail.hero.scoreValue:SetPoint("TOPRIGHT", detail.hero.scoreLabel, "BOTTOMRIGHT", 0, -1)
+
+    detail.hero.mainScore:ClearAllPoints()
+    detail.hero.mainScore:SetPoint("TOPLEFT", detail.hero.scoreValue, "BOTTOMLEFT", 0, -3)
+    detail.hero.mainScore:SetPoint("TOPRIGHT", detail.hero.scoreValue, "BOTTOMRIGHT", 0, -3)
+
     detail.hero.emptyState:SetWidth(contentWidth - 20)
 
     detail.summarySection:ClearAllPoints()
@@ -1405,6 +1537,8 @@ function DetailPanel:Refresh(panel)
     detail.panel = panel
     local record = panel.selectedFullName and ns.Data:GetRecord(panel.selectedFullName)
     if not record then
+        detail.hero.nameRibbon:Hide()
+        detail.hero.scorePlate:Hide()
         detail.hero.name:Hide()
         detail.hero.roleBadge:Hide()
         detail.hero.scoreLabel:Hide()
@@ -1444,7 +1578,6 @@ function DetailPanel:Refresh(panel)
     local scoreColor = ns:GetScoreColor(record.currentScore)
     local classR, classG, classB = classColor:GetRGB()
     local scoreR, scoreG, scoreB = scoreColor:GetRGB()
-    local hasAstralKeys = ns.AstralKeys and ns.AstralKeys:IsAvailable()
     local playerRecord = ns.playerFullName and ns.Data:GetRecord(ns.playerFullName) or nil
     local yourKeyContext = ns.Data:GetCurrentKeyContext() or {}
     local reportedKey = record.reportedKey
@@ -1457,8 +1590,6 @@ function DetailPanel:Refresh(panel)
     local theirKeyTooltip = nil
     if isBrowsingSelf then
         theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_SELF
-    elseif not hasAstralKeys then
-        theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_ASTRALKEYS
     elseif not playerRecord then
         theirKeyTooltip = ns.L.DETAIL_THEIR_KEY_DISABLED_NO_SELF
     elseif not canShowTheirKey then
@@ -1486,6 +1617,8 @@ function DetailPanel:Refresh(panel)
     UpdateKeyTabButton(detail.keyTabs.your, activeKeyTab == "your", true)
     UpdateKeyTabButton(detail.keyTabs.their, activeKeyTab == "their", canShowTheirKey)
 
+    detail.hero.nameRibbon:Show()
+    detail.hero.scorePlate:Show()
     detail.hero.name:Show()
     detail.hero.roleBadge:Show()
     detail.hero.scoreLabel:Show()
@@ -1496,19 +1629,27 @@ function DetailPanel:Refresh(panel)
     detail.hero.infoButton.record = record
     detail.hero.roleBadge.record = record
 
-    detail.hero.tint:SetVertexColor(classR, classG, classB, 0.08)
-    detail.hero.topAccent:SetVertexColor(classR, classG, classB, 0.85)
+    detail.hero.tint:SetVertexColor(classR, classG, classB, 0)
+    detail.hero.topAccent:SetVertexColor(classR, classG, classB, 0)
+    detail.hero.nameRibbon.shadow:SetVertexColor(0, 0, 0, 0.1)
+    detail.hero.nameRibbon.background:SetVertexColor(classR, classG, classB, 0.14)
+    detail.hero.nameRibbon.leftCap:SetVertexColor(classR, classG, classB, 0.28)
+    detail.hero.nameRibbon.rightCap:SetVertexColor(1, 1, 1, 0.05)
+    detail.hero.scorePlate.glow:SetVertexColor(scoreR, scoreG, scoreB, 0.025)
+    detail.hero.scorePlate.sideAccent:SetVertexColor(scoreR, scoreG, scoreB, 0.85)
 
     detail.hero.name:SetText(ns:GetRecordDisplayName(record))
-    detail.hero.name:SetTextColor(classR, classG, classB)
+    detail.hero.name:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
     detail.hero.roleBadge.icon:SetAtlas(ns:GetRoleAtlas(record.roleBucket))
     detail.hero.roleBadge.icon:SetSize(14, 14)
+    detail.hero.scoreLabel:SetText(ns.L.DETAIL_SCORE)
+    detail.hero.scoreLabel:SetTextColor(1, 0.84, 0.18)
     detail.hero.scoreValue:SetText(tostring(record.currentScore or 0))
     detail.hero.scoreValue:SetTextColor(scoreR, scoreG, scoreB)
 
     if record.mainCurrentScore and record.mainCurrentScore > (record.currentScore or 0) then
         detail.hero.mainScore:SetText(("%s: %d"):format(ns.L.DETAIL_MAIN_SCORE, record.mainCurrentScore))
-        detail.hero.mainScore:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+        detail.hero.mainScore:SetTextColor(GRAY_FONT_COLOR:GetRGB())
         detail.hero.mainScore:Show()
     else
         detail.hero.mainScore:SetText("")
@@ -1516,7 +1657,7 @@ function DetailPanel:Refresh(panel)
     end
 
     local reportedKeyRow = detail.summaryRows[3]
-    SetSectionHeight(detail.summarySection, hasAstralKeys and 90 or 70)
+    SetSectionHeight(detail.summarySection, 90)
 
     local specRow = detail.summaryRows[1]
     if record.specName then
@@ -1541,18 +1682,14 @@ function DetailPanel:Refresh(panel)
         itemLevelRow.value:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
     end
 
-    reportedKeyRow:SetShown(hasAstralKeys)
-    if hasAstralKeys then
-        if reportedKey and reportedKey.level and reportedKey.mapID then
-            local texture = reportedKey.texture or reportedKey.backgroundTexture or dungeonFallbackTexture
-            reportedKeyRow.value:SetText(BuildKeystoneDisplayText(texture, reportedKey.level, reportedKey.mapName))
-            reportedKeyRow.value:SetTextColor(GetKeystoneLevelColor(reportedKey.level):GetRGB())
-        else
-            reportedKeyRow.value:SetText(ns.L.DETAIL_NO_REPORTED_KEY)
-            reportedKeyRow.value:SetTextColor(GRAY_FONT_COLOR:GetRGB())
-        end
+    reportedKeyRow:SetShown(true)
+    if reportedKey and reportedKey.level and reportedKey.mapID then
+        local texture = reportedKey.texture or reportedKey.backgroundTexture or dungeonFallbackTexture
+        reportedKeyRow.value:SetText(BuildKeystoneDisplayText(texture, reportedKey.level, reportedKey.mapName))
+        reportedKeyRow.value:SetTextColor(GetKeystoneLevelColor(reportedKey.level):GetRGB())
     else
-        reportedKeyRow.value:SetText("")
+        reportedKeyRow.value:SetText(ns.L.DETAIL_NO_REPORTED_KEY)
+        reportedKeyRow.value:SetTextColor(GRAY_FONT_COLOR:GetRGB())
     end
 
     local showLiveRun = ns.Config:Get("enableGuildSyncChannel")

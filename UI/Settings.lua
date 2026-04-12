@@ -77,6 +77,29 @@ function SettingsPanel:RefreshAstralKeysMetadata()
     self.panel.astralKeysEntries:SetText(ns.L.SETTINGS_ASTRALKEYS_ENTRIES_FORMAT:format(metadata.entryCount or 0))
 end
 
+function SettingsPanel:RefreshGuildSyncMetadata()
+    if not self.panel or not self.panel.guildSyncSessionReporters then
+        return
+    end
+
+    local channelEnabled = ns.Config:Get("enableGuildSyncChannel")
+    local reporterCount = channelEnabled
+        and ns.Comm
+        and type(ns.Comm.GetSessionReporterCount) == "function"
+        and ns.Comm:GetSessionReporterCount()
+        or 0
+
+    self.panel.guildSyncSessionReporters:SetText(
+        ns.L.SETTINGS_GUILD_SYNC_SESSION_REPORTERS_FORMAT:format(reporterCount or 0)
+    )
+
+    if channelEnabled then
+        self.panel.guildSyncSessionReporters:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+    else
+        self.panel.guildSyncSessionReporters:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+    end
+end
+
 function SettingsPanel:RefreshControls()
     if not self.panel then
         return
@@ -108,6 +131,7 @@ end
 
 function SettingsPanel:RefreshAll()
     self:RefreshControls()
+    self:RefreshGuildSyncMetadata()
     self:RefreshRaiderIOMetadata()
     self:RefreshAstralKeysMetadata()
 end
@@ -205,7 +229,9 @@ function SettingsPanel:Create()
         "showLiveKeyActivity"
     )
 
-    panel.guildSyncDisabled = CreateWrappedText(panel, "GameFontDisableSmall", panel.liveActivityToggle, -6)
+    panel.guildSyncSessionReporters = CreateWrappedText(panel, "GameFontHighlightSmall", panel.liveActivityToggle, -8)
+
+    panel.guildSyncDisabled = CreateWrappedText(panel, "GameFontDisableSmall", panel.guildSyncSessionReporters, -6)
     panel.guildSyncDisabled:SetText(ns.L.SETTINGS_GUILD_SYNC_DISABLED)
 
     panel.raiderIOHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -241,7 +267,11 @@ ns:RegisterCallback("PLAYER_LOGIN", function()
 end)
 
 ns:RegisterCallback("CONFIG_CHANGED", function()
-    SettingsPanel:RefreshControls()
+    SettingsPanel:RefreshAll()
+end)
+
+ns:RegisterCallback("COMM_SNAPSHOT_UPDATED", function()
+    SettingsPanel:RefreshGuildSyncMetadata()
 end)
 
 ns:RegisterEvent("ADDON_LOADED", function(name)
