@@ -2404,6 +2404,16 @@ ns:RegisterCallback("PLAYER_LOGIN", function()
     Panel:RegisterAddonCompartment()
     Panel:HookGuildInline()
     Panel:HookFriendsInline()
+    C_Timer.After(0, function()
+        if Panel:EnsurePVEFrameLoaded() then
+            Panel:EnsureTab()
+        end
+    end)
+    C_Timer.After(1, function()
+        if not Panel.tab and Panel:EnsurePVEFrameLoaded() then
+            Panel:EnsureTab()
+        end
+    end)
 end)
 
 ns:RegisterCallback("DATA_UPDATED", function(reason)
