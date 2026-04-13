@@ -5,6 +5,7 @@ local Comm = {
     protocol = "RR1",
     snapshotTTLSeconds = 7 * 24 * 60 * 60,
     activeRunTTLSeconds = 90 * 60,
+    pruneIntervalSeconds = 15,
     outboundQueue = {},
     lastSentSignatures = {},
     activeRunSources = {},
@@ -12,8 +13,7 @@ local Comm = {
     sessionReporters = {},
     sessionReporterCount = 0,
     newerManifestBySender = {},
-    refreshPending = false,
-    refreshReason = nil,
+    nextPruneAt = 0,
     state = {
         grouped = false,
         inInstance = false,
@@ -202,7 +202,7 @@ function Comm:Initialize()
     ns.db.commCache.sharedSnapshots = ns.db.commCache.sharedSnapshots or {}
     self.sharedSnapshots = ns.db.commCache.sharedSnapshots
     self:InitializeState()
-    self:PruneSnapshots()
+    self:PruneCachesIfNeeded(true)
 
     if C_ChatInfo and type(C_ChatInfo.RegisterAddonMessagePrefix) == "function" then
         pcall(C_ChatInfo.RegisterAddonMessagePrefix, self.prefix)
@@ -250,6 +250,17 @@ function Comm:ClearExpiredActivity()
     end
 end
 
+function Comm:PruneCachesIfNeeded(force)
+    local now = GetTime and GetTime() or 0
+    if not force and now < (self.nextPruneAt or 0) then
+        return
+    end
+
+    self.nextPruneAt = now + self.pruneIntervalSeconds
+    self:PruneSnapshots()
+    self:ClearExpiredActivity()
+end
+
 function Comm:ResetRuntimeState()
     wipe(self.outboundQueue)
     wipe(self.lastSentSignatures)
@@ -259,28 +270,18 @@ function Comm:ResetRuntimeState()
     self.sessionReporterCount = 0
     wipe(self.newerManifestBySender)
     self.state.ownedKeySignature = self:GetLocalOwnedKeySignature()
+    self.nextPruneAt = 0
 
-    if self.queueTicker then
-        self.queueTicker:Cancel()
-        self.queueTicker = nil
+    if self.queueTimer then
+        self.queueTimer:Cancel()
+        self.queueTimer = nil
     end
 end
 
 function Comm:RequestDataRefresh(reason)
-    self.refreshReason = reason or self.refreshReason or "comm"
-    if self.refreshPending then
-        return
+    if ns.Data and type(ns.Data.MarkDirty) == "function" then
+        ns.Data:MarkDirty("comm", reason or "comm")
     end
-
-    self.refreshPending = true
-    C_Timer.After(0.2, function()
-        Comm.refreshPending = false
-        local refreshReason = Comm.refreshReason or "comm"
-        Comm.refreshReason = nil
-        if ns.Data and type(ns.Data.Refresh) == "function" then
-            ns.Data:Refresh(refreshReason)
-        end
-    end)
 end
 
 function Comm:EncodeManifest(datasets)
@@ -669,7 +670,7 @@ function Comm:GetSnapshot(fullName)
         return nil
     end
 
-    self:PruneSnapshots()
+    self:PruneCachesIfNeeded()
     local fullNameKey = GetCommIdentityKey(fullName)
     return fullNameKey and self.sharedSnapshots and self.sharedSnapshots[fullNameKey] or nil
 end
@@ -679,7 +680,7 @@ function Comm:GetActiveRun(fullName)
         return nil
     end
 
-    self:ClearExpiredActivity()
+    self:PruneCachesIfNeeded()
     local fullNameKey = GetCommIdentityKey(fullName)
     local sources = fullNameKey and self.activeRunParticipants[fullNameKey] or nil
     if not sources then
@@ -702,6 +703,7 @@ function Comm:HasNewerRaiderIOData()
         return false
     end
 
+    self:PruneCachesIfNeeded()
     return next(self.newerManifestBySender) ~= nil
 end
 
@@ -710,6 +712,7 @@ function Comm:GetNewerRaiderIOSources()
         return {}
     end
 
+    self:PruneCachesIfNeeded()
     local sources = {}
     for _, entry in pairs(self.newerManifestBySender) do
         sources[#sources + 1] = entry
@@ -785,6 +788,40 @@ function Comm:StoreActivity(activity)
     end
 end
 
+local function SortOutboundQueue(queue)
+    table.sort(queue, function(left, right)
+        if (left.notBefore or 0) ~= (right.notBefore or 0) then
+            return (left.notBefore or 0) < (right.notBefore or 0)
+        end
+
+        return (left.key or "") < (right.key or "")
+    end)
+end
+
+function Comm:ScheduleQueueProcessing()
+    if self.queueTimer then
+        self.queueTimer:Cancel()
+        self.queueTimer = nil
+    end
+
+    local item = self.outboundQueue[1]
+    if not item then
+        return
+    end
+
+    local delay = math.max(0, (item.notBefore or 0) - GetTime())
+    if C_Timer and type(C_Timer.NewTimer) == "function" then
+        self.queueTimer = C_Timer.NewTimer(delay, function()
+            Comm.queueTimer = nil
+            Comm:ProcessQueue()
+        end)
+    else
+        C_Timer.After(delay, function()
+            Comm:ProcessQueue()
+        end)
+    end
+end
+
 function Comm:EnqueueMessage(key, message, signature, delaySeconds)
     if not self:IsEnabled() or not IsInGuild() or type(message) ~= "string" or message == "" then
         return
@@ -816,33 +853,31 @@ function Comm:EnqueueMessage(key, message, signature, delaySeconds)
         self.outboundQueue[#self.outboundQueue + 1] = item
     end
 
-    if not self.queueTicker then
-        self.queueTicker = C_Timer.NewTicker(0.2, function()
-            Comm:ProcessQueue()
-        end)
-    end
+    SortOutboundQueue(self.outboundQueue)
+    self:ScheduleQueueProcessing()
 end
 
 function Comm:ProcessQueue()
     if not self:IsEnabled() or not IsInGuild() then
         wipe(self.outboundQueue)
-        if self.queueTicker then
-            self.queueTicker:Cancel()
-            self.queueTicker = nil
+        if self.queueTimer then
+            self.queueTimer:Cancel()
+            self.queueTimer = nil
         end
         return
     end
 
     local item = self.outboundQueue[1]
     if not item then
-        if self.queueTicker then
-            self.queueTicker:Cancel()
-            self.queueTicker = nil
+        if self.queueTimer then
+            self.queueTimer:Cancel()
+            self.queueTimer = nil
         end
         return
     end
 
     if GetTime() < (item.notBefore or 0) then
+        self:ScheduleQueueProcessing()
         return
     end
 
@@ -853,6 +888,8 @@ function Comm:ProcessQueue()
             self.lastSentSignatures[item.signature] = GetTime()
         end
     end
+
+    self:ScheduleQueueProcessing()
 end
 
 function Comm:QueueSnapshot(reason, delaySeconds)

@@ -3,12 +3,7 @@ local _, ns = ...
 local Config = {}
 ns.Config = Config
 
-local alwaysOnKeys = {
-    enableGuildInline = true,
-    enableFriendsInline = true,
-    showItemLevel = true,
-    enableInspectEnrichment = true
-}
+local alwaysOnKeys = {}
 
 local defaults = {
     enableGuildInline = true,

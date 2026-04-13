@@ -712,6 +712,49 @@ function Panel:Open()
     end)
 end
 
+function Panel:IsPanelVisible()
+    return self.frame and self.frame:IsShown() or false
+end
+
+function Panel:IsGuildInlineVisible()
+    return ns.Config
+        and ns.Config:Get("enableGuildInline")
+        and GuildFrame
+        and GuildFrame:IsShown()
+        and GuildRosterContainer
+        and GuildRosterContainer:IsShown()
+        or false
+end
+
+function Panel:IsFriendsInlineVisible()
+    return ns.Config
+        and ns.Config:Get("enableFriendsInline")
+        and FriendsFrame
+        and FriendsFrame:IsShown()
+        or false
+end
+
+function Panel:GetRuntimeState()
+    if self:IsPanelVisible() then
+        return "PanelActive"
+    end
+
+    if self:IsGuildInlineVisible() or self:IsFriendsInlineVisible() then
+        return "InlineActive"
+    end
+
+    if ns.Comm and ns.Comm.state and ns.Comm.state.challengeActive then
+        return "ChallengeActive"
+    end
+
+    return "Dormant"
+end
+
+function Panel:HasVisibleConsumer()
+    local state = self:GetRuntimeState()
+    return state == "PanelActive" or state == "InlineActive"
+end
+
 function Panel:EnsureSelected()
     if self.selectedFullName then
         for index = 1, #self.displayRows do
@@ -1577,6 +1620,13 @@ function Panel:EnsureCreated()
 
     frame:Hide()
     frame:SetScript("OnShow", function()
+        Panel.panelDirty = true
+        if ns.Data and type(ns.Data.FlushDirty) == "function" then
+            ns.Data:FlushDirty("panel_show", {
+                force = true,
+                requestGuild = true
+            })
+        end
         Panel:Refresh()
     end)
     frame:SetScript("OnSizeChanged", function()
@@ -1906,8 +1956,11 @@ function Panel:SelectIntegratedTab()
         PVEFrame.selectedTab = self.tabID
     end
 
+    local wasShown = self.frame:IsShown()
     self.frame:Show()
-    self:Refresh()
+    if wasShown then
+        self:Refresh()
+    end
 end
 
 function Panel:RefreshHeaderControls()
@@ -1985,16 +2038,17 @@ function Panel:RefreshDetail()
 end
 
 function Panel:Refresh()
-    if self.frame then
-        self:BuildClassDropdown()
-        self:RefreshHeaderControls()
-        self.displayRows = self:PrepareDisplayRows(ns.Data:GetRecords(self:GetFilters()))
-        self:EnsureSelected()
-        self:RefreshRows()
-        self:RefreshDetail()
+    if not self:IsPanelVisible() then
+        return
     end
 
-    self:RefreshInline()
+    self.panelDirty = false
+    self:BuildClassDropdown()
+    self:RefreshHeaderControls()
+    self.displayRows = self:PrepareDisplayRows(ns.Data:GetRecords(self:GetFilters()))
+    self:EnsureSelected()
+    self:RefreshRows()
+    self:RefreshDetail()
 end
 
 function Panel:GetInlineValues(record)
@@ -2075,6 +2129,13 @@ function Panel:PopulateInlineWidget(widget, record)
 end
 
 function Panel:UpdateGuildInlineButton(button)
+    if not button or not button:IsShown() or not self:IsGuildInlineVisible() then
+        if button and button.RaiderRanksInline then
+            button.RaiderRanksInline:Hide()
+        end
+        return
+    end
+
     if not ns.Config:Get("enableGuildInline") then
         if button.RaiderRanksInline then
             button.RaiderRanksInline:Hide()
@@ -2084,12 +2145,18 @@ function Panel:UpdateGuildInlineButton(button)
 
     local index = button.index or button.guildIndex
     if not index or type(GetGuildRosterInfo) ~= "function" then
+        if button.RaiderRanksInline then
+            button.RaiderRanksInline:Hide()
+        end
         return
     end
 
     local fullName, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(index)
     local name, realm = ns:GetNameRealmFromGUID(guid, fullName, ns.playerRealm)
     if type(name) ~= "string" then
+        if button.RaiderRanksInline then
+            button.RaiderRanksInline:Hide()
+        end
         return
     end
 
@@ -2102,7 +2169,7 @@ function Panel:UpdateGuildInlineButton(button)
 end
 
 function Panel:UpdateGuildInline(buttons)
-    if not buttons then
+    if not buttons or not self:IsGuildInlineVisible() then
         return
     end
 
@@ -2126,6 +2193,13 @@ function Panel:HookGuildInline()
             end
         end)
         self.guildInlineHooked = true
+    end
+
+    if GuildFrame and not self.guildInlineVisibilityHooked then
+        GuildFrame:HookScript("OnShow", function()
+            Panel:RefreshInline("guild_show")
+        end)
+        self.guildInlineVisibilityHooked = true
     end
 end
 
@@ -2180,10 +2254,18 @@ function Panel:GetFriendRecordFromButton(button)
 end
 
 function Panel:UpdateFriendsInline()
+    if not self:IsFriendsInlineVisible() then
+        return
+    end
+
     local buttons = self:GetFriendButtons()
     for index = 1, #buttons do
         local button = buttons[index]
-        if not ns.Config:Get("enableFriendsInline") then
+        if not button:IsShown() then
+            if button.RaiderRanksInline then
+                button.RaiderRanksInline:Hide()
+            end
+        elseif not ns.Config:Get("enableFriendsInline") then
             if button.RaiderRanksInline then
                 button.RaiderRanksInline:Hide()
             end
@@ -2215,18 +2297,40 @@ function Panel:HookFriendsInline()
         end)
     end
 
+    if FriendsFrame and not self.friendsInlineVisibilityHooked then
+        FriendsFrame:HookScript("OnShow", function()
+            Panel:RefreshInline("friends_show")
+        end)
+        self.friendsInlineVisibilityHooked = true
+    end
+
     self.friendsInlineHooked = true
 end
 
-function Panel:RefreshInline()
+function Panel:RefreshInline(reason)
     self:HookGuildInline()
     self:HookFriendsInline()
 
-    if GuildRosterContainer and GuildRosterContainer.GetFrames then
+    local wantsGuild = self:IsGuildInlineVisible()
+    local wantsFriends = self:IsFriendsInlineVisible()
+    if not wantsGuild and not wantsFriends then
+        return
+    end
+
+    if ns.Data and type(ns.Data.FlushDirty) == "function" then
+        ns.Data:FlushDirty(reason or "inline", {
+            force = true,
+            requestGuild = wantsGuild
+        })
+    end
+
+    if wantsGuild and GuildRosterContainer and GuildRosterContainer.GetFrames then
         self:UpdateGuildInline(GuildRosterContainer:GetFrames())
     end
 
-    self:UpdateFriendsInline()
+    if wantsFriends then
+        self:UpdateFriendsInline()
+    end
 end
 
 function Panel:RegisterSlashCommands()
@@ -2283,35 +2387,57 @@ ns:RegisterCallback("PLAYER_LOGIN", function()
     Panel:RegisterAddonCompartment()
     Panel:HookGuildInline()
     Panel:HookFriendsInline()
-    C_Timer.After(0, function()
-        Panel:EnsureCreated()
-    end)
-    C_Timer.After(1, function()
-        if not Panel.tab then
-            Panel:EnsureCreated()
-        end
-    end)
 end)
 
-ns:RegisterCallback("DATA_UPDATED", function()
-    Panel:Refresh()
+ns:RegisterCallback("DATA_UPDATED", function(reason)
+    Panel.panelDirty = true
+    if Panel:IsPanelVisible() then
+        Panel:Refresh()
+    end
+    if Panel:IsGuildInlineVisible() or Panel:IsFriendsInlineVisible() then
+        Panel:RefreshInline(reason or "data")
+    end
 end)
 
 ns:RegisterCallback("CONFIG_CHANGED", function()
-    Panel:Refresh()
+    Panel.panelDirty = true
+    if Panel:IsPanelVisible() then
+        if ns.Data and type(ns.Data.FlushDirty) == "function" then
+            ns.Data:FlushDirty("config", {
+                force = true,
+                requestGuild = true
+            })
+        end
+        Panel:Refresh()
+    end
+    if Panel:IsGuildInlineVisible() or Panel:IsFriendsInlineVisible() then
+        Panel:RefreshInline("config")
+    end
 end)
 
 ns:RegisterEvent("ADDON_LOADED", function(name)
-    if name == "Blizzard_GuildUI" or name == "Blizzard_FriendsFrame" then
+    if name == "Blizzard_GuildUI" then
         C_Timer.After(0, function()
-            Panel:RefreshInline()
+            Panel:HookGuildInline()
+            if Panel:IsGuildInlineVisible() then
+                Panel:RefreshInline("guild_loaded")
+            end
+        end)
+    elseif name == "Blizzard_FriendsFrame" then
+        C_Timer.After(0, function()
+            Panel:HookFriendsInline()
+            if Panel:IsFriendsInlineVisible() then
+                Panel:RefreshInline("friends_loaded")
+            end
         end)
     end
 
     for index = 1, #pveAddonNames do
-        if name == pveAddonNames[index] and not Panel.frame then
+        if name == pveAddonNames[index] then
             C_Timer.After(0, function()
-                Panel:EnsureCreated()
+                if PVEFrame then
+                    Panel:EnsureTab()
+                end
             end)
             break
         end

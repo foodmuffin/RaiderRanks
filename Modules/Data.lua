@@ -5,6 +5,16 @@ local Data = {
     recordsByKey = {},
     recordsByIdentityKey = {},
     specCatalog = {},
+    dirtyScopes = {},
+    dirtyReasons = {},
+    flushScheduled = false,
+    baseInitialized = false,
+    guildRequestPending = false,
+    guildRequestIntervalSeconds = 60,
+    guildLastRequestAt = 0,
+    guildLastUpdateAt = 0,
+    raiderIOCache = {},
+    raiderIOCacheStamp = nil,
     currentKeyContext = {
         mapID = nil,
         mapName = nil,
@@ -30,6 +40,49 @@ local difficultyLabels = {
     [2] = HEROIC,
     [3] = MYTHIC
 }
+
+local dirtyScopeKeys = {
+    guild = true,
+    friends = true,
+    bnet = true,
+    comm = true,
+    currentKey = true,
+    ui = true,
+    astral = true
+}
+
+local dirtyScopeOrder = {
+    "guild",
+    "friends",
+    "bnet",
+    "comm",
+    "currentKey",
+    "ui",
+    "astral"
+}
+
+local function BuildRaiderIOCacheStamp()
+    if not ns:IsRaiderIOAvailable() then
+        return "missing"
+    end
+
+    local metadata = ns:GetRaiderIOMetadata()
+    local datasets = (metadata and metadata.datasets) or {}
+    local parts = {
+        tostring(metadata and metadata.coreVersion or "")
+    }
+
+    for index = 1, #datasets do
+        local dataset = datasets[index]
+        parts[#parts + 1] = ("%s|%s|%s"):format(
+            dataset.region or "",
+            dataset.dataType or "",
+            dataset.stampRaw or ""
+        )
+    end
+
+    return table.concat(parts, ";")
+end
 
 local function GetEmptyQualifiedByRole()
     return {
@@ -277,6 +330,136 @@ local function AreEquivalentFullNames(left, right)
     return type(leftKey) == "string" and leftKey == rightKey
 end
 
+function Data:EnsureRaiderIOCacheStamp()
+    local stamp = BuildRaiderIOCacheStamp()
+    if stamp ~= self.raiderIOCacheStamp then
+        wipe(self.raiderIOCache)
+        self.raiderIOCacheStamp = stamp
+    end
+end
+
+function Data:HasActiveConsumer()
+    local panel = ns.Panel
+    return panel
+        and type(panel.HasVisibleConsumer) == "function"
+        and panel:HasVisibleConsumer()
+        or false
+end
+
+function Data:IsDirty()
+    for index = 1, #dirtyScopeOrder do
+        if self.dirtyScopes[dirtyScopeOrder[index]] then
+            return true
+        end
+    end
+
+    return not self.baseInitialized
+end
+
+function Data:InvalidateAll(reason)
+    for index = 1, #dirtyScopeOrder do
+        local scope = dirtyScopeOrder[index]
+        self.dirtyScopes[scope] = true
+        self.dirtyReasons[scope] = reason or self.dirtyReasons[scope] or scope
+    end
+end
+
+function Data:MarkDirty(scope, reason)
+    if not ns.db then
+        return
+    end
+
+    if not scope or scope == "all" then
+        self:InvalidateAll(reason)
+    elseif dirtyScopeKeys[scope] then
+        self.dirtyScopes[scope] = true
+        self.dirtyReasons[scope] = reason or self.dirtyReasons[scope] or scope
+    end
+
+    if self:HasActiveConsumer() then
+        self:ScheduleFlush(reason, {
+            requestGuild = scope == "guild"
+        })
+    end
+end
+
+function Data:ScheduleFlush(reason, options)
+    self.scheduledReason = reason or self.scheduledReason
+    self.scheduledFlushOptions = self.scheduledFlushOptions or {}
+
+    if type(options) == "table" then
+        for key, value in pairs(options) do
+            if value then
+                self.scheduledFlushOptions[key] = value
+            end
+        end
+    end
+
+    if self.flushScheduled then
+        return
+    end
+
+    self.flushScheduled = true
+    C_Timer.After(0, function()
+        Data.flushScheduled = false
+        local flushReason = Data.scheduledReason
+        local flushOptions = Data.scheduledFlushOptions
+        Data.scheduledReason = nil
+        Data.scheduledFlushOptions = nil
+        Data:FlushDirty(flushReason, flushOptions)
+    end)
+end
+
+function Data:ConsumeDirtyState()
+    local dirtyState = {}
+    for index = 1, #dirtyScopeOrder do
+        local scope = dirtyScopeOrder[index]
+        dirtyState[scope] = self.dirtyScopes[scope] == true
+        self.dirtyScopes[scope] = nil
+        self.dirtyReasons[scope] = nil
+    end
+
+    return dirtyState
+end
+
+function Data:ShouldRequestGuildRoster(force)
+    if not IsInGuild() then
+        return false
+    end
+
+    if self.guildRequestPending then
+        return false
+    end
+
+    if force then
+        return true
+    end
+
+    local now = GetTime and GetTime() or 0
+    local freshestTimestamp = math.max(self.guildLastRequestAt or 0, self.guildLastUpdateAt or 0)
+    return freshestTimestamp <= 0 or (now - freshestTimestamp) >= self.guildRequestIntervalSeconds
+end
+
+function Data:RequestGuildRoster(reason)
+    if not self:ShouldRequestGuildRoster(reason == "manual" or reason == "slash") then
+        return false
+    end
+
+    self.guildRequestPending = true
+    self.guildLastRequestAt = GetTime and GetTime() or 0
+
+    if C_GuildInfo and C_GuildInfo.GuildRoster then
+        C_GuildInfo.GuildRoster()
+        return true
+    elseif GuildRoster then
+        GuildRoster()
+        return true
+    end
+
+    self.guildRequestPending = false
+    return false
+end
+
 function Data:CreateBlankRecord(name, realm)
     local fullName = ns:ComposeFullName(name, realm)
     return {
@@ -422,12 +605,6 @@ function Data:CollectGuild()
         return
     end
 
-    if C_GuildInfo and C_GuildInfo.GuildRoster then
-        C_GuildInfo.GuildRoster()
-    elseif GuildRoster then
-        GuildRoster()
-    end
-
     if type(GetNumGuildMembers) ~= "function" or type(GetGuildRosterInfo) ~= "function" then
         return
     end
@@ -519,7 +696,7 @@ function Data:CollectBNetFriends()
     end
 end
 
-function Data:ApplyRaiderIO(record)
+local function ResetRaiderIOFields(record)
     record.currentScore = 0
     record.previousScore = 0
     record.mainCurrentScore = nil
@@ -544,9 +721,112 @@ function Data:ApplyRaiderIO(record)
     record.sortedDungeons = {}
     record.raidSummary = {}
     record.hasRenderableProfile = false
+end
+
+local function ApplyCachedRaiderIOFields(record, cacheEntry)
+    for key, value in pairs(cacheEntry) do
+        record[key] = value
+    end
+end
+
+local function BuildRaiderIOCacheEntry(profile)
+    local entry = {
+        profileState = "unscored",
+        currentScore = 0,
+        previousScore = 0,
+        mainCurrentScore = nil,
+        raiderIOHasOverrideScore = false,
+        raiderIOOriginalScore = nil,
+        raiderIOHasOverrideDungeonRuns = false,
+        maxDungeonLevel = 0,
+        timed20 = 0,
+        timed15 = 0,
+        timed11_14 = 0,
+        timed9_10 = 0,
+        timed4_8 = 0,
+        timed2_3 = 0,
+        displayTimed15 = nil,
+        displayTimed2_3 = nil,
+        completed20 = 0,
+        completed15 = 0,
+        completed11_14 = 0,
+        completed9_10 = 0,
+        completed4_8 = 0,
+        completed2_3 = 0,
+        sortedDungeons = {},
+        raidSummary = {},
+        hasRenderableProfile = false,
+        roleBucket = nil,
+        roleSource = nil
+    }
+
+    local mythic = profile and profile.mythicKeystoneProfile
+    if not mythic then
+        return entry
+    end
+
+    if mythic.hasRenderableData == false then
+        entry.profileState = "stale"
+    else
+        entry.profileState = "ready"
+        entry.hasRenderableProfile = true
+        entry.currentScore = ns:Round(mythic.currentScore or 0)
+        entry.previousScore = ns:Round(mythic.previousScore or 0)
+        entry.mainCurrentScore = mythic.mainCurrentScore and ns:Round(mythic.mainCurrentScore) or nil
+        entry.raiderIOHasOverrideScore = not not mythic.hasOverrideScore
+        entry.raiderIOOriginalScore = mythic.originalCurrentScore and ns:Round(mythic.originalCurrentScore) or nil
+        entry.raiderIOHasOverrideDungeonRuns = not not mythic.hasOverrideDungeonRuns
+        entry.maxDungeonLevel = mythic.maxDungeonLevel or 0
+        entry.sortedDungeons = mythic.sortedDungeons or {}
+        PopulateRunSummary(entry)
+        if type(mythic.keystoneMilestone15) == "number" then
+            entry.displayTimed15 = mythic.keystoneMilestone15
+        end
+        if type(mythic.keystoneMilestone2) == "number" then
+            entry.displayTimed2_3 = mythic.keystoneMilestone2
+        end
+        ApplyMilestoneDisplayFloors(entry)
+
+        local currentRoles = mythic.mplusCurrent and mythic.mplusCurrent.roles
+        if type(currentRoles) == "table" and currentRoles[1] and currentRoles[1][1] then
+            entry.roleBucket = currentRoles[1][1]
+            entry.roleSource = "raiderio"
+        end
+    end
+
+    local raid = profile and profile.raidProfile
+    if raid and raid.hasRenderableData ~= false and type(raid.progress) == "table" then
+        for index = 1, #raid.progress do
+            local progress = raid.progress[index]
+            local raidInfo = progress.raid
+            if progress and raidInfo then
+                entry.raidSummary[#entry.raidSummary + 1] = {
+                    label = difficultyLabels[progress.difficulty] or tostring(progress.difficulty),
+                    shortName = raidInfo.shortName or raidInfo.name,
+                    progressCount = progress.progressCount or 0,
+                    bossCount = raidInfo.bossCount or 0
+                }
+            end
+        end
+    end
+
+    return entry
+end
+
+function Data:ApplyRaiderIO(record)
+    ResetRaiderIOFields(record)
 
     if not ns:IsRaiderIOAvailable() then
         record.profileState = "missing_dependency"
+        return
+    end
+
+    self:EnsureRaiderIOCacheStamp()
+
+    local cacheKey = GetIdentityKey(record.fullName) or record.fullName
+    local cacheEntry = cacheKey and self.raiderIOCache[cacheKey] or nil
+    if cacheEntry then
+        ApplyCachedRaiderIOFields(record, cacheEntry)
         return
     end
 
@@ -556,71 +836,36 @@ function Data:ApplyRaiderIO(record)
         return
     end
 
-    local mythic = profile.mythicKeystoneProfile
-    if not mythic then
-        record.profileState = "unscored"
-    elseif mythic.hasRenderableData == false then
-        record.profileState = "stale"
-    else
-        record.profileState = "ready"
-        record.hasRenderableProfile = true
-        record.currentScore = ns:Round(mythic.currentScore or 0)
-        record.previousScore = ns:Round(mythic.previousScore or 0)
-        record.mainCurrentScore = mythic.mainCurrentScore and ns:Round(mythic.mainCurrentScore) or nil
-        record.raiderIOHasOverrideScore = not not mythic.hasOverrideScore
-        record.raiderIOOriginalScore = mythic.originalCurrentScore and ns:Round(mythic.originalCurrentScore) or nil
-        record.raiderIOHasOverrideDungeonRuns = not not mythic.hasOverrideDungeonRuns
-        record.maxDungeonLevel = mythic.maxDungeonLevel or 0
-        record.sortedDungeons = mythic.sortedDungeons or {}
-        PopulateRunSummary(record)
-        if type(mythic.keystoneMilestone15) == "number" then
-            record.displayTimed15 = mythic.keystoneMilestone15
-        end
-        if type(mythic.keystoneMilestone2) == "number" then
-            record.displayTimed2_3 = mythic.keystoneMilestone2
-        end
-        ApplyMilestoneDisplayFloors(record)
-
-        local currentRoles = mythic.mplusCurrent and mythic.mplusCurrent.roles
-        if type(currentRoles) == "table" and currentRoles[1] and currentRoles[1][1] then
-            record.roleBucket = currentRoles[1][1]
-            record.roleSource = "raiderio"
-        end
+    cacheEntry = BuildRaiderIOCacheEntry(profile)
+    if cacheKey then
+        self.raiderIOCache[cacheKey] = cacheEntry
     end
-
-    local raid = profile.raidProfile
-    if raid and raid.hasRenderableData ~= false and type(raid.progress) == "table" then
-        for index = 1, #raid.progress do
-            local progress = raid.progress[index]
-            local raidInfo = progress.raid
-            if progress and raidInfo then
-                table.insert(record.raidSummary, {
-                    label = difficultyLabels[progress.difficulty] or tostring(progress.difficulty),
-                    shortName = raidInfo.shortName or raidInfo.name,
-                    progressCount = progress.progressCount or 0,
-                    bossCount = raidInfo.bossCount or 0
-                })
-            end
-        end
-    end
+    ApplyCachedRaiderIOFields(record, cacheEntry)
 end
 
 function Data:ApplyEnrichment(record)
+    record.equippedItemLevel = nil
     record.itemLevelSource = "unknown"
     record.itemLevelObservedAt = nil
     record.itemLevelIsStale = false
     record.scoreSource = "local"
     record.scoreObservedAt = nil
+    record.specID = nil
+    record.specName = nil
+    record.specIcon = nil
     record.specSource = "unknown"
     record.specObservedAt = nil
     record.specIsStale = false
     record.roleObservedAt = nil
     if record.roleSource ~= "raiderio" then
+        record.roleBucket = "unknown"
         record.roleSource = "unknown"
     end
 
     ns.Inspect:ApplyLiveData(record)
-    ns.Inspect:ApplyCachedData(record)
+    if ns.Inspect:IsEnabled() then
+        ns.Inspect:ApplyCachedData(record)
+    end
 
     if record.specID and record.specName then
         self.specCatalog[record.specID] = {
@@ -784,24 +1029,9 @@ local function AreReportedKeysEqual(left, right)
 end
 
 function Data:RefreshAstralKeys(reason)
-    local changed = false
-
-    if ns.AstralKeys and ns.AstralKeys:IsAvailable() then
-        ns.AstralKeys:RefreshIndex()
-    end
-
-    for index = 1, #self.records do
-        local record = self.records[index]
-        local previousKey = record.reportedKey
-        self:ApplyReportedKey(record)
-        if not AreReportedKeysEqual(previousKey, record.reportedKey) then
-            changed = true
-        end
-    end
-
-    if changed then
-        ns:FireCallback("DATA_UPDATED", reason or "astralkeys")
-    end
+    local refreshReason = reason or "astralkeys"
+    self:MarkDirty("astral", refreshReason)
+    return self:FlushDirty(refreshReason)
 end
 
 function Data:BuildFlatRecords()
@@ -943,31 +1173,122 @@ function Data:CompareRecords(left, right)
     return (left.fullName or "") < (right.fullName or "")
 end
 
-function Data:Refresh(reason)
-    self:ResetRecords()
-    self:CollectGuild()
-    self:CollectFriends()
-    self:CollectBNetFriends()
-    self:BuildFlatRecords()
+function Data:ApplyDirtyState(dirtyState)
+    local rebuildBase = not self.baseInitialized
+        or dirtyState.guild
+        or dirtyState.friends
+        or dirtyState.bnet
+    local refreshEnrichment = rebuildBase or dirtyState.ui
+    local refreshCommOverlay = rebuildBase or dirtyState.comm or dirtyState.ui
+    local refreshReportedKey = rebuildBase or dirtyState.comm or dirtyState.currentKey or dirtyState.astral
+    local refreshSort = rebuildBase or dirtyState.comm or dirtyState.ui
+    local refreshCurrentKey = rebuildBase or dirtyState.comm or dirtyState.currentKey or dirtyState.ui
 
-    if ns.AstralKeys then
+    if rebuildBase then
+        self:ResetRecords()
+        self:CollectGuild()
+        self:CollectFriends()
+        self:CollectBNetFriends()
+        self:BuildFlatRecords()
+        self.baseInitialized = true
+    end
+
+    if ns.AstralKeys and (rebuildBase or dirtyState.astral) then
         ns.AstralKeys:RefreshIndex()
     end
 
-    for index = 1, #self.records do
-        local record = self.records[index]
-        self:ApplyRaiderIO(record)
-        self:ApplyEnrichment(record)
-        self:ApplyReportedKey(record)
-        self:ApplyCommOverlay(record)
+    if (rebuildBase or dirtyState.comm or dirtyState.currentKey)
+        and ns.Comm
+        and type(ns.Comm.PruneCachesIfNeeded) == "function" then
+        ns.Comm:PruneCachesIfNeeded(true)
     end
 
-    table.sort(self.records, function(left, right)
-        return Data:CompareRecords(left, right)
-    end)
+    if rebuildBase then
+        self:EnsureRaiderIOCacheStamp()
+    end
 
-    self:UpdateCurrentKeyContext()
-    ns:FireCallback("DATA_UPDATED", reason or "manual")
+    if rebuildBase or refreshEnrichment or refreshCommOverlay or refreshReportedKey then
+        for index = 1, #self.records do
+            local record = self.records[index]
+            if rebuildBase then
+                self:ApplyRaiderIO(record)
+            end
+            if refreshEnrichment then
+                self:ApplyEnrichment(record)
+            end
+            if refreshReportedKey then
+                self:ApplyReportedKey(record)
+            end
+            if refreshCommOverlay then
+                self:ApplyCommOverlay(record)
+            end
+        end
+    end
+
+    if refreshSort then
+        table.sort(self.records, function(left, right)
+            return Data:CompareRecords(left, right)
+        end)
+    end
+
+    if refreshCurrentKey then
+        self:UpdateCurrentKeyContext()
+    end
+end
+
+function Data:FlushDirty(reason, options)
+    if not ns.db then
+        return false
+    end
+
+    options = options or {}
+    if not options.force and not self:HasActiveConsumer() then
+        return false
+    end
+
+    local dirtyState = self:ConsumeDirtyState()
+    if not self.baseInitialized then
+        dirtyState.guild = true
+        dirtyState.friends = true
+        dirtyState.bnet = true
+        dirtyState.comm = true
+        dirtyState.currentKey = true
+        dirtyState.ui = true
+        dirtyState.astral = true
+    end
+
+    if options.requestGuild and self:ShouldRequestGuildRoster(false) then
+        dirtyState.guild = true
+    end
+
+    local hasWork = false
+    for index = 1, #dirtyScopeOrder do
+        if dirtyState[dirtyScopeOrder[index]] then
+            hasWork = true
+            break
+        end
+    end
+
+    if not hasWork then
+        return false
+    end
+
+    if dirtyState.guild and self:ShouldRequestGuildRoster(reason == "manual" or reason == "slash") then
+        self:RequestGuildRoster(reason)
+    end
+
+    self:ApplyDirtyState(dirtyState)
+    ns:FireCallback("DATA_UPDATED", reason or "event")
+    return true
+end
+
+function Data:Refresh(reason)
+    local refreshReason = reason or "manual"
+    self:InvalidateAll(refreshReason)
+    return self:FlushDirty(refreshReason, {
+        force = true,
+        requestGuild = true
+    })
 end
 
 function Data:OnInspectDataReady(fullName, guid, payload)
@@ -1109,37 +1430,76 @@ function Data:GetCurrentKeyContext()
     return self.currentKeyContext
 end
 
-local function RefreshRoster()
+local function MarkScopeDirty(scope, reason)
     if not ns.db then
         return
     end
 
-    Data:Refresh("event")
+    Data:MarkDirty(scope, reason or scope)
 end
 
 ns:RegisterCallback("PLAYER_LOGIN", function()
-    Data:Refresh("login")
+    Data:InvalidateAll("login")
 end)
 
 ns:RegisterEvent("ADDON_LOADED", function(name)
     if name == "AstralKeys" and ns.db then
-        Data:Refresh("astralkeys_loaded")
+        Data:MarkDirty("astral", "astralkeys_loaded")
     end
 end)
 
 ns:RegisterEvent("CHAT_MSG_ADDON", function(prefix)
     if prefix == "AstralKeys" and ns.db then
-        Data:RefreshAstralKeys("astralkeys_sync")
+        Data:MarkDirty("astral", "astralkeys_sync")
     end
 end)
 
-ns:RegisterEvent("FRIENDLIST_UPDATE", RefreshRoster)
-ns:RegisterEvent("BN_FRIEND_ACCOUNT_ONLINE", RefreshRoster)
-ns:RegisterEvent("BN_FRIEND_ACCOUNT_OFFLINE", RefreshRoster)
-ns:RegisterEvent("BN_FRIEND_INFO_CHANGED", RefreshRoster)
-ns:RegisterEvent("GUILD_ROSTER_UPDATE", RefreshRoster)
-ns:RegisterEvent("PLAYER_ROLES_ASSIGNED", RefreshRoster)
-ns:RegisterEvent("GROUP_ROSTER_UPDATE", RefreshRoster)
-ns:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", RefreshRoster)
-ns:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE", RefreshRoster)
-ns:RegisterEvent("BAG_UPDATE_DELAYED", RefreshRoster)
+ns:RegisterCallback("CONFIG_CHANGED", function(key)
+    if key == "enableGuildSyncChannel" then
+        Data:MarkDirty("comm", "config")
+    elseif key == "enableInspectEnrichment" then
+        Data:MarkDirty("ui", "config")
+    end
+end)
+
+ns:RegisterEvent("FRIENDLIST_UPDATE", function()
+    MarkScopeDirty("friends", "friends")
+end)
+
+ns:RegisterEvent("BN_FRIEND_ACCOUNT_ONLINE", function()
+    MarkScopeDirty("bnet", "bnet")
+end)
+
+ns:RegisterEvent("BN_FRIEND_ACCOUNT_OFFLINE", function()
+    MarkScopeDirty("bnet", "bnet")
+end)
+
+ns:RegisterEvent("BN_FRIEND_INFO_CHANGED", function()
+    MarkScopeDirty("bnet", "bnet")
+end)
+
+ns:RegisterEvent("GUILD_ROSTER_UPDATE", function()
+    Data.guildRequestPending = false
+    Data.guildLastUpdateAt = GetTime and GetTime() or 0
+    MarkScopeDirty("guild", "guild")
+end)
+
+ns:RegisterEvent("PLAYER_ROLES_ASSIGNED", function()
+    MarkScopeDirty("ui", "roles")
+end)
+
+ns:RegisterEvent("GROUP_ROSTER_UPDATE", function()
+    MarkScopeDirty("ui", "group")
+end)
+
+ns:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", function()
+    MarkScopeDirty("ui", "spec")
+end)
+
+ns:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE", function()
+    MarkScopeDirty("currentKey", "challenge_maps")
+end)
+
+ns:RegisterEvent("BAG_UPDATE_DELAYED", function()
+    MarkScopeDirty("currentKey", "bag")
+end)
