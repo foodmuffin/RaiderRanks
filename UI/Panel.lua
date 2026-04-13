@@ -1515,6 +1515,7 @@ end
 
 function Panel:EnsureTab()
     if self.tab and self.tabID then
+        self:HookPVEFrame()
         if PanelTemplates_SetNumTabs then
             PanelTemplates_SetNumTabs(PVEFrame, self.tabID)
         end
@@ -1560,6 +1561,7 @@ function Panel:EnsureTab()
     end
 
     self:HookNativeTabs()
+    self:HookPVEFrame()
     return true
 end
 
@@ -1647,6 +1649,21 @@ function Panel:HookPVEFrame()
     if self.pveHooked or not PVEFrame then
         return
     end
+
+    PVEFrame:HookScript("OnShow", function()
+        Panel:EnsureTab()
+
+        local selectedTab = PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(PVEFrame) or PVEFrame.selectedTab
+        if Panel.frame and (Panel.frame:IsShown() or selectedTab == Panel.tabID) then
+            HideNativePVEPanels()
+            Panel:ExpandPVEFrame()
+            Panel:UpdatePVEFrameTitle()
+            Panel:UpdatePVEFramePortrait()
+            if Panel.frame:IsShown() then
+                Panel:ApplyLayout()
+            end
+        end
+    end)
 
     PVEFrame:HookScript("OnHide", function()
         Panel:HideIntegratedFrame()
@@ -2435,7 +2452,7 @@ ns:RegisterEvent("ADDON_LOADED", function(name)
     for index = 1, #pveAddonNames do
         if name == pveAddonNames[index] then
             C_Timer.After(0, function()
-                if PVEFrame then
+                if Panel:EnsurePVEFrameLoaded() then
                     Panel:EnsureTab()
                 end
             end)
